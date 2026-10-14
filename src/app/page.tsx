@@ -15,16 +15,10 @@ import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import type { CoachInsight, CoachResponse } from "@/lib/coach/types";
 import { gameConfigs, gameIds, type GameId } from "@/lib/games";
+import { isAllowedCoachVideo, normalizeCoachVideo } from "@/lib/video";
 
 const MAX_BYTES = 100 * 1024 * 1024;
-const acceptedTypes = ["video/mp4", "video/webm", "video/quicktime"];
-const acceptedExtensions = /\.(mp4|webm|mov)$/i;
 const insightIcons = { aim: Crosshair, positioning: Shield, abilities: Zap, practice: Dumbbell };
-
-function isAcceptedVideo(file: File) {
-  if (acceptedTypes.includes(file.type)) return true;
-  return acceptedExtensions.test(file.name);
-}
 
 function Typewriter({ text, delay = 0 }: { text: string; delay?: number }) {
   const [visible, setVisible] = useState("");
@@ -87,7 +81,7 @@ export default function Home() {
 
   function acceptVideo(nextFile: File) {
     setError("");
-    if (!isAcceptedVideo(nextFile)) {
+    if (!isAllowedCoachVideo(nextFile)) {
       setError("MP4、WebM、MOV形式の動画を選択してください。");
       setStatus("error");
       return;
@@ -159,7 +153,7 @@ export default function Home() {
       let response: Response;
       if (file) {
         const body = new FormData();
-        body.append("video", file);
+        body.append("video", normalizeCoachVideo(file));
         body.append("game", game);
         body.append("rank", rank);
         body.append("character", character);
@@ -273,7 +267,14 @@ export default function Home() {
               </Button>
               <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[9px] text-zinc-700"><Shield className="size-3 shrink-0" />{concern.trim().length < 8 ? "悩みを8文字以上入力すると解析できます。動画は任意です。" : "動画は任意です。アップロードした場合のみプレビューし、解析後は保存しません。"}</p>
             </div>
-            <input ref={inputRef} type="file" onChange={onFileChange} className="sr-only" aria-label="ゲーム動画" />
+            <input
+              ref={inputRef}
+              type="file"
+              form=""
+              onChange={onFileChange}
+              className="sr-only"
+              aria-label="ゲーム動画"
+            />
           </Card>
 
           <Card className="min-h-[520px] overflow-hidden border-white/[0.08] bg-[#0e0e10]/95 p-0 text-white shadow-2xl shadow-black/40 sm:min-h-[620px]">

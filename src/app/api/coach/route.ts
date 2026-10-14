@@ -2,13 +2,13 @@ import { NextResponse } from "next/server";
 import { getCoachProvider } from "@/lib/coach/provider";
 import type { CoachRequest } from "@/lib/coach/types";
 import { gameConfigs, isGameId } from "@/lib/games";
+import { isAllowedCoachVideo } from "@/lib/video";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
 // Vercel Hobby caps request bodies at ~4.5MB. Local/self-host keeps 100MB.
 const MAX_VIDEO_BYTES = process.env.VERCEL ? Math.floor(4.5 * 1024 * 1024) : 100 * 1024 * 1024;
-const VIDEO_TYPES = new Set(["video/mp4", "video/webm", "video/quicktime"]);
 
 type ParsedCoachBody = {
   video?: File;
@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     const concern = parsed.concern;
 
     if (video) {
-      if (!VIDEO_TYPES.has(video.type)) {
+      if (!isAllowedCoachVideo(video)) {
         return NextResponse.json({ error: "MP4、WebM、MOV形式の動画を使用してください。" }, { status: 415 });
       }
       if (video.size > MAX_VIDEO_BYTES) {
