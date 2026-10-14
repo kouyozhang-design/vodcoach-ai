@@ -209,7 +209,7 @@ export default function Home() {
 
         <div className="grid gap-4 xl:grid-cols-[0.86fr_1.14fr]">
           <Card className="border-white/[0.08] bg-[#0e0e10]/95 p-0 text-white shadow-2xl shadow-black/40">
-            <form onSubmit={submit} className="p-4 sm:p-5">
+            <form onSubmit={submit} noValidate className="p-4 sm:p-5">
               <div className="mb-4 flex items-center justify-between">
                 <div>
                   <p className="text-sm font-semibold">01 · Match clip <span className="font-normal text-zinc-500">（任意）</span></p>
@@ -265,7 +265,7 @@ export default function Home() {
               </label>
 
               {error && <div role="alert" className="mt-4 flex items-start gap-2 rounded-xl border border-red-500/20 bg-red-500/[0.08] p-3 text-xs leading-5 text-red-300"><AlertCircle className="mt-0.5 size-4 shrink-0" />{error}</div>}
-              <Button type="submit" disabled={!canSubmit} className="mt-5 h-12 w-full rounded-xl bg-gradient-to-r from-red-600 to-red-500 text-sm font-semibold shadow-[0_10px_35px_rgba(220,38,38,.2)] hover:from-red-500 hover:to-red-400 disabled:opacity-70">
+              <Button type="submit" formNoValidate disabled={!canSubmit} className="mt-5 h-12 w-full rounded-xl bg-gradient-to-r from-red-600 to-red-500 text-sm font-semibold shadow-[0_10px_35px_rgba(220,38,38,.2)] hover:from-red-500 hover:to-red-400 disabled:opacity-70">
                 {status === "analyzing" ? <LoaderCircle className="animate-spin" /> : <Sparkles />} {status === "analyzing" ? (file ? "フレームをスキャン中..." : "コーチングを生成中...") : "AIコーチに解析させる"}
               </Button>
               <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[9px] text-zinc-700"><Shield className="size-3 shrink-0" />{concern.trim().length < 8 ? "悩みを8文字以上入力すると解析できます。動画は任意です。" : "動画は任意です。アップロードした場合のみプレビューし、解析後は保存しません。"}</p>
