@@ -15,6 +15,7 @@ import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import type { CoachInsight, CoachResponse } from "@/lib/coach/types";
 import { gameConfigs, gameIds, type GameId } from "@/lib/games";
+import { pickVideoFileFromUser } from "@/lib/pick-video-file";
 import { isAllowedCoachVideo, normalizeCoachVideo } from "@/lib/video";
 
 const MAX_BYTES = 100 * 1024 * 1024;
@@ -70,13 +71,13 @@ export default function Home() {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState("");
   const [result, setResult] = useState<CoachResponse | null>(null);
-  const pickerRef = useRef<HTMLInputElement | null>(null);
   const urlRef = useRef("");
   const gameConfig = gameConfigs[game];
   const hasNotes = concern.trim().length >= 8;
   const canSubmit = status !== "analyzing" && (Boolean(file) || hasNotes);
 
   useEffect(() => {
+    document.querySelectorAll('input[type="file"]').forEach((node) => node.remove());
     const blockNative = (event: Event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -87,7 +88,6 @@ export default function Home() {
       document.removeEventListener("submit", blockNative, true);
       document.removeEventListener("invalid", blockNative, true);
       if (urlRef.current) URL.revokeObjectURL(urlRef.current);
-      pickerRef.current?.remove();
     };
   }, []);
 
@@ -112,21 +112,9 @@ export default function Home() {
     setStatus("ready");
   }
 
-  function pickVideoFile() {
-    pickerRef.current?.remove();
-    const input = document.createElement("input");
-    input.type = "file";
-    input.style.position = "fixed";
-    input.style.left = "-9999px";
-    document.body.appendChild(input);
-    pickerRef.current = input;
-    input.addEventListener("change", () => {
-      const nextFile = input.files?.[0];
-      input.remove();
-      pickerRef.current = null;
-      if (nextFile) acceptVideo(nextFile);
-    });
-    input.click();
+  async function pickVideoFile() {
+    const nextFile = await pickVideoFileFromUser();
+    if (nextFile) acceptVideo(nextFile);
   }
 
   function onDrop(event: DragEvent<HTMLDivElement>) {
