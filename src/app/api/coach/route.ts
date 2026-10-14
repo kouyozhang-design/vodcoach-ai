@@ -47,9 +47,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "対応ゲームを選択してください。" }, { status: 400 });
     }
     const config = gameConfigs[game];
-    if (!config.ranks.includes(rank) || !config.characters.includes(character) || concern.length < 8) {
+    if (!config.ranks.includes(rank) || !config.characters.includes(character)) {
       return NextResponse.json(
-        { error: `有効なランク、${config.characterLabel}、8文字以上の悩みを入力してください。` },
+        { error: `有効なランクと${config.characterLabel}を選択してください。` },
+        { status: 400 },
+      );
+    }
+    if (!video && concern.length < 8) {
+      return NextResponse.json(
+        { error: "動画を追加するか、立ち回り・目的を8文字以上書いてください。" },
         { status: 400 },
       );
     }

@@ -1,14 +1,25 @@
 const VIDEO_EXT = /\.(mp4|m4v|mov|qt|webm)$/i;
-const BLOCKED_EXT = /\.(png|jpe?g|gif|webp|heic|heif|bmp|pdf|txt|zip)$/i;
+const BLOCKED_EXT = /\.(png|jpe?g|gif|webp|heic|heif|bmp|pdf|txt|zip|doc|docx)$/i;
+const VIDEO_MIME = /^(video\/|application\/octet-stream$)/i;
+const MAC_MIME = new Set([
+  "",
+  "video/mp4",
+  "video/quicktime",
+  "video/x-m4v",
+  "video/webm",
+  "video/hevc",
+  "video/h265",
+  "video/x-quicktime",
+  "application/octet-stream",
+]);
 
 export function isAllowedCoachVideo(file: { name?: string; type?: string }) {
   const type = (file.type ?? "").trim().toLowerCase().split(";")[0];
   const name = file.name ?? "";
   if (BLOCKED_EXT.test(name) || type.startsWith("image/") || type.startsWith("audio/")) return false;
   if (VIDEO_EXT.test(name)) return true;
-  if (type.startsWith("video/")) return true;
-  // iPhone/Safari: empty type, or octet-stream, often with IMG_*.MOV or no extension.
-  if (!type || type === "application/octet-stream") return true;
+  if (MAC_MIME.has(type) || VIDEO_MIME.test(type)) return true;
+  if (!type) return true;
   return false;
 }
 

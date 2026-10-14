@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  ChangeEvent, DragEvent, useEffect, useRef, useState,
+  DragEvent, useEffect, useRef, useState,
 } from "react";
 import {
   AlertCircle, Check, ChevronDown, Crosshair, Dumbbell, FileVideo,
@@ -70,13 +70,25 @@ export default function Home() {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState("");
   const [result, setResult] = useState<CoachResponse | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const pickerRef = useRef<HTMLInputElement | null>(null);
   const urlRef = useRef("");
   const gameConfig = gameConfigs[game];
-  const canSubmit = concern.trim().length >= 8 && status !== "analyzing";
+  const hasNotes = concern.trim().length >= 8;
+  const canSubmit = status !== "analyzing" && (Boolean(file) || hasNotes);
 
-  useEffect(() => () => {
-    if (urlRef.current) URL.revokeObjectURL(urlRef.current);
+  useEffect(() => {
+    const blockNative = (event: Event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    document.addEventListener("submit", blockNative, true);
+    document.addEventListener("invalid", blockNative, true);
+    return () => {
+      document.removeEventListener("submit", blockNative, true);
+      document.removeEventListener("invalid", blockNative, true);
+      if (urlRef.current) URL.revokeObjectURL(urlRef.current);
+      pickerRef.current?.remove();
+    };
   }, []);
 
   function acceptVideo(nextFile: File) {
@@ -100,13 +112,26 @@ export default function Home() {
     setStatus("ready");
   }
 
-  function onFileChange(event: ChangeEvent<HTMLInputElement>) {
-    const nextFile = event.target.files?.[0];
-    if (nextFile) acceptVideo(nextFile);
+  function pickVideoFile() {
+    pickerRef.current?.remove();
+    const input = document.createElement("input");
+    input.type = "file";
+    input.style.position = "fixed";
+    input.style.left = "-9999px";
+    document.body.appendChild(input);
+    pickerRef.current = input;
+    input.addEventListener("change", () => {
+      const nextFile = input.files?.[0];
+      input.remove();
+      pickerRef.current = null;
+      if (nextFile) acceptVideo(nextFile);
+    });
+    input.click();
   }
 
   function onDrop(event: DragEvent<HTMLDivElement>) {
     event.preventDefault();
+    event.stopPropagation();
     setDragging(false);
     const nextFile = event.dataTransfer.files?.[0];
     if (nextFile) acceptVideo(nextFile);
@@ -120,7 +145,6 @@ export default function Home() {
     setResult(null);
     setError("");
     setStatus("empty");
-    if (inputRef.current) inputRef.current.value = "";
   }
 
   function changeGame(nextGame: string) {
@@ -136,8 +160,8 @@ export default function Home() {
   }
 
   async function submit() {
-    if (concern.trim().length < 8) {
-      setError("悩みを8文字以上で入力してください。動画は任意です。");
+    if (!file && concern.trim().length < 8) {
+      setError("動画を追加するか、立ち回り・目的を8文字以上書いてください。");
       setStatus("error");
       return;
     }
@@ -203,7 +227,7 @@ export default function Home() {
           <h1 className="mt-3 max-w-3xl text-4xl font-semibold leading-[1.04] tracking-[-0.05em] sm:text-5xl lg:text-[58px]">
             ゲームを問わず、<span className="inline-block bg-gradient-to-r from-red-300 via-red-500 to-orange-400 bg-clip-text text-transparent">映像から改善。</span>
           </h1>
-          <p className="mt-4 max-w-xl text-sm leading-6 text-zinc-500">Apex LegendsとVALORANTに対応。動画は任意です。ゲーム・ランク・キャラ・悩みだけでも、エイム・射線・スキルの改善策を返せます。</p>
+          <p className="mt-4 max-w-xl text-sm leading-6 text-zinc-500">Apex LegendsとVALORANTに対応。クリップだけでも、立ち回り・プレイスタイル・目的に寄せた改善策を返せます。説明文は任意です。</p>
         </section>
 
         <div className="grid gap-4 xl:grid-cols-[0.86fr_1.14fr]">
@@ -212,24 +236,25 @@ export default function Home() {
               <div className="mb-4 flex items-center justify-between">
                 <div>
                   <p className="text-sm font-semibold">01 · Match clip <span className="font-normal text-zinc-500">（任意）</span></p>
-                  <p className="mt-1 text-[11px] text-zinc-600">なくても解析できます · MP4 / WebM / MOV · 最大100MB</p>
+                  <p className="mt-1 text-[11px] text-zinc-600">Macの.mov / .mp4 / .m4v / .webm 対応 · 最大100MB</p>
                 </div>
                 {file && <button type="button" onClick={clearVideo} className="grid size-8 place-items-center rounded-lg text-zinc-600 transition hover:bg-white/5 hover:text-white" aria-label="動画を削除"><X className="size-4" /></button>}
               </div>
 
               {!previewUrl ? (
                 <div
+                  data-testid="clip-dropzone"
                   onDragEnter={(event) => { event.preventDefault(); setDragging(true); }}
                   onDragOver={(event) => event.preventDefault()}
                   onDragLeave={() => setDragging(false)}
                   onDrop={onDrop}
-                  onClick={() => inputRef.current?.click()}
+                  onClick={pickVideoFile}
                   className={`group flex min-h-40 cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed p-5 text-center transition sm:min-h-52 ${dragging ? "border-red-400 bg-red-500/10" : "border-white/10 bg-black/20 hover:border-red-500/40 hover:bg-red-500/[0.035]"}`}
                 >
                   <div className="grid size-12 place-items-center rounded-2xl border border-white/[0.08] bg-white/[0.035] shadow-lg shadow-black/30"><UploadCloud className="size-5 text-red-400 transition group-hover:-translate-y-0.5" /></div>
-                  <p className="mt-4 text-sm font-medium">動画をドロップ、または選択（任意）</p>
-                  <p className="mt-1.5 text-[11px] text-zinc-600">{gameConfig.uploadHint}。なくても下の項目だけでコーチングできます。</p>
-                  <Button type="button" size="sm" className="mt-4 bg-white text-black hover:bg-zinc-200">ファイルを選ぶ</Button>
+                  <p className="mt-4 text-sm font-medium">動画をドロップ、または選択</p>
+                  <p className="mt-1.5 text-[11px] text-zinc-600">{gameConfig.uploadHint}。クリップだけでも解析できます。</p>
+                  <Button type="button" size="sm" className="mt-4 bg-white text-black hover:bg-zinc-200" onClick={(event) => { event.stopPropagation(); pickVideoFile(); }}>ファイルを選ぶ</Button>
                 </div>
               ) : (
                 <div className="overflow-hidden rounded-2xl border border-white/[0.08] bg-black">
@@ -262,27 +287,25 @@ export default function Home() {
               </label>
 
               {error && <div role="alert" className="mt-4 flex items-start gap-2 rounded-xl border border-red-500/20 bg-red-500/[0.08] p-3 text-xs leading-5 text-red-300"><AlertCircle className="mt-0.5 size-4 shrink-0" />{error}</div>}
-              <Button type="button" onClick={() => void submit()} disabled={!canSubmit} className="mt-5 h-12 w-full rounded-xl bg-gradient-to-r from-red-600 to-red-500 text-sm font-semibold shadow-[0_10px_35px_rgba(220,38,38,.2)] hover:from-red-500 hover:to-red-400 disabled:opacity-70">
-                {status === "analyzing" ? <LoaderCircle className="animate-spin" /> : <Sparkles />} {status === "analyzing" ? (file ? "フレームをスキャン中..." : "コーチングを生成中...") : "AIコーチに解析させる"}
-              </Button>
-              <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[9px] text-zinc-700"><Shield className="size-3 shrink-0" />{concern.trim().length < 8 ? "悩みを8文字以上入力すると解析できます。動画は任意です。" : "動画は任意です。アップロードした場合のみプレビューし、解析後は保存しません。"}</p>
+              <button
+                type="button"
+                data-testid="coach-submit"
+                onClick={() => void submit()}
+                disabled={!canSubmit}
+                className="mt-5 flex h-12 w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-red-600 to-red-500 text-sm font-semibold text-white shadow-[0_10px_35px_rgba(220,38,38,.2)] hover:from-red-500 hover:to-red-400 disabled:pointer-events-none disabled:opacity-70"
+              >
+                {status === "analyzing" ? <LoaderCircle className="size-4 animate-spin" /> : <Sparkles className="size-4" />} {status === "analyzing" ? (file ? "フレームをスキャン中..." : "コーチングを生成中...") : "AIコーチに解析させる"}
+              </button>
+              <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[9px] text-zinc-700"><Shield className="size-3 shrink-0" />{file || hasNotes ? "動画だけでも解析できます。アップロードしたクリップは保存しません。" : "動画を追加するか、立ち回り・目的を8文字以上書いてください。"}</p>
             </div>
-            <input
-              ref={inputRef}
-              type="file"
-              form=""
-              onChange={onFileChange}
-              className="sr-only"
-              aria-label="ゲーム動画"
-            />
           </Card>
 
           <Card className="min-h-[520px] overflow-hidden border-white/[0.08] bg-[#0e0e10]/95 p-0 text-white shadow-2xl shadow-black/40 sm:min-h-[620px]">
             {(status === "empty" || status === "ready" || status === "error") && (
               <div className="flex min-h-[520px] flex-col items-center justify-center px-6 py-10 text-center sm:min-h-[620px] sm:px-8">
                 <div className="relative"><div className="absolute -inset-7 rounded-full bg-red-500/10 blur-2xl" /><div className="relative grid size-16 place-items-center rounded-2xl border border-white/[0.08] bg-white/[0.03]"><Play className="ml-1 size-6 fill-red-500/20 text-red-400" /></div></div>
-                <p className="mt-6 text-base font-semibold">{file ? "解析の準備ができました" : "動画なしでもコーチングできます"}</p>
-                <p className="mt-2 max-w-sm text-xs leading-5 text-zinc-600">{file ? "プレビューを確認し、AIコーチに解析させるを押してください。クリップに基づく指摘が出ます。" : "ゲーム・ランク・キャラ・悩みを入力して解析を開始。クリップを足すと、タイムスタンプ付きの具体指摘になります。"}</p>
+                <p className="mt-6 text-base font-semibold">{file ? "クリップの解析準備ができました" : "動画だけでもコーチングできます"}</p>
+                <p className="mt-2 max-w-sm text-xs leading-5 text-zinc-600">{file ? "説明は任意です。解析すると立ち回り・プレイスタイル・目的に寄せた4項目が出ます。" : "クリップをドロップするか、立ち回り・目的を書いて解析を開始できます。"}</p>
                 <div className="mt-7 grid w-full max-w-md grid-cols-2 gap-2 text-left sm:grid-cols-4">
                   {["Aim", "Sightlines", "Abilities", "Practice"].map((item, index) => <div key={item} className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5"><span className="text-[9px] text-red-400">0{index + 1}</span><p className="mt-1 text-[10px] text-zinc-500">{item}</p></div>)}
                 </div>
