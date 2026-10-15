@@ -1,94 +1,68 @@
 "use client";
 
-const CONSTRAINT_ATTRS = ["accept", "required", "pattern", "minlength", "maxlength", "form"] as const;
-
-function stripConstraints(input: HTMLInputElement) {
-  for (const name of CONSTRAINT_ATTRS) input.removeAttribute(name);
-  input.setCustomValidity("");
+/** Never render <input type="file"> in React/SSR. Prefer the File System Access picker. */
+export function removeDocumentFileInputs() {
+  if (typeof document === "undefined") return;
+  document.querySelectorAll('input[type="file"]').forEach((node) => {
+    const input = node as HTMLInputElement;
+    input.disabled = true;
+    input.removeAttribute("accept");
+    input.removeAttribute("required");
+    input.removeAttribute("pattern");
+    input.removeAttribute("form");
+    input.remove();
+  });
 }
 
-/** Browser-only file picker. Never render <input type="file"> in React/SSR. */
-export function pickVideoFileFromUser(): Promise<File | null> {
-  if (typeof document === "undefined" || typeof window === "undefined") {
-    return Promise.resolve(null);
+type OpenFilePicker = (options?: { multiple?: boolean }) => Promise<Array<{ getFile: () => Promise<File> }>>;
+
+export async function pickVideoFileFromUser(): Promise<File | null> {
+  if (typeof window === "undefined" || typeof document === "undefined") return null;
+  removeDocumentFileInputs();
+
+  const picker = (window as Window & { showOpenFilePicker?: OpenFilePicker }).showOpenFilePicker;
+  if (typeof picker === "function") {
+    try {
+      const handles = await picker.call(window, { multiple: false });
+      const file = await handles[0]?.getFile();
+      return file ?? null;
+    } catch (error) {
+      if (isUserCancel(error)) return null;
+    }
   }
 
+  return pickWithDetachedInput();
+}
+
+function isUserCancel(error: unknown) {
+  return error instanceof DOMException && (error.name === "AbortError" || error.name === "NotAllowedError");
+}
+
+function pickWithDetachedInput(): Promise<File | null> {
   return new Promise((resolve) => {
     const input = document.createElement("input");
     input.type = "file";
-    stripConstraints(input);
-    input.tabIndex = -1;
-    input.setAttribute("aria-hidden", "true");
-    Object.assign(input.style, {
-      position: "fixed",
-      left: "-10000px",
-      top: "0",
-      width: "1px",
-      height: "1px",
-      opacity: "0",
-      pointerEvents: "none",
-    });
+    input.multiple = false;
+    input.removeAttribute("accept");
+    input.removeAttribute("required");
+    input.removeAttribute("pattern");
+    input.removeAttribute("form");
+    input.removeAttribute("class");
 
     let settled = false;
     const finish = (file: File | null) => {
       if (settled) return;
       settled = true;
       input.disabled = true;
-      stripConstraints(input);
+      input.value = "";
       input.remove();
-      window.removeEventListener("focus", onFocus);
       resolve(file);
     };
 
-    const onFocus = () => {
-      queueMicrotask(() => finish(input.files?.[0] ?? null));
-    };
-
-    input.addEventListener("invalid", (event) => {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-    }, true);
     input.addEventListener("change", () => {
       finish(input.files?.[0] ?? null);
-    }, { once: true });
-    input.addEventListener("cancel", () => finish(null), { once: true });
-
-    document.body.appendChild(input);
-    window.addEventListener("focus", onFocus);
+    });
+    input.addEventListener("cancel", () => finish(null));
     input.click();
-  });
-}
-
-export function auditControlValidity() {
-  if (typeof document === "undefined") return [];
-  return [...document.querySelectorAll("input, select, textarea, button")].map((node) => {
-    const el = node as HTMLInputElement;
-    return {
-      tag: el.tagName,
-      type: el.getAttribute("type"),
-      checkValidity: typeof el.checkValidity === "function" ? el.checkValidity() : true,
-      validationMessage: el.validationMessage ?? "",
-      patternMismatch: el.validity?.patternMismatch ?? false,
-    };
-  });
-}
-
-export function purgeConstraintValidation() {
-  if (typeof document === "undefined") return;
-  document.querySelectorAll("form").forEach((form) => {
-    form.noValidate = true;
-    form.addEventListener("submit", (event) => {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-    }, true);
-  });
-  document.querySelectorAll("input, select, textarea, button").forEach((node) => {
-    const el = node as HTMLInputElement;
-    for (const name of CONSTRAINT_ATTRS) el.removeAttribute(name);
-    if (typeof el.setCustomValidity === "function") el.setCustomValidity("");
-    if (el instanceof HTMLInputElement && el.type === "file") {
-      el.disabled = true;
-      el.remove();
-    }
   });
 }

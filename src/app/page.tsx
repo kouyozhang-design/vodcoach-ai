@@ -15,7 +15,7 @@ import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import type { CoachInsight, CoachResponse } from "@/lib/coach/types";
 import { gameConfigs, gameIds, type GameId } from "@/lib/games";
-import { auditControlValidity, pickVideoFileFromUser, purgeConstraintValidation } from "@/lib/pick-video-file";
+import { pickVideoFileFromUser, removeDocumentFileInputs } from "@/lib/pick-video-file";
 import { isAllowedCoachVideo, normalizeCoachVideo } from "@/lib/video";
 
 const MAX_BYTES = 100 * 1024 * 1024;
@@ -42,7 +42,7 @@ function SelectField({
   label, value, options, onChange,
 }: { label: string; value: string; options: readonly string[]; onChange: (value: string) => void }) {
   return (
-    <div className="space-y-2">
+    <label className="space-y-2">
       <span className="text-[11px] font-semibold uppercase tracking-[0.13em] text-zinc-500">{label}</span>
       <div className="relative">
         <select
@@ -55,7 +55,7 @@ function SelectField({
         </select>
         <ChevronDown className="pointer-events-none absolute right-3.5 top-3.5 size-4 text-zinc-600" />
       </div>
-    </div>
+    </label>
   );
 }
 
@@ -77,16 +77,17 @@ export default function Home() {
   const canSubmit = status !== "analyzing" && (Boolean(file) || hasNotes);
 
   useEffect(() => {
-    purgeConstraintValidation();
+    removeDocumentFileInputs();
     const blockNative = (event: Event) => {
       event.preventDefault();
+      event.stopPropagation();
       event.stopImmediatePropagation();
     };
-    document.addEventListener("submit", blockNative, true);
-    document.addEventListener("invalid", blockNative, true);
+    window.addEventListener("submit", blockNative, true);
+    window.addEventListener("invalid", blockNative, true);
     return () => {
-      document.removeEventListener("submit", blockNative, true);
-      document.removeEventListener("invalid", blockNative, true);
+      window.removeEventListener("submit", blockNative, true);
+      window.removeEventListener("invalid", blockNative, true);
       if (urlRef.current) URL.revokeObjectURL(urlRef.current);
     };
   }, []);
@@ -110,17 +111,10 @@ export default function Home() {
     setFile(nextFile);
     setResult(null);
     setStatus("ready");
-    purgeConstraintValidation();
-    const audit = auditControlValidity();
-    const bad = audit.find((row) => !row.checkValidity || row.patternMismatch || row.validationMessage);
-    if (bad) {
-      console.warn("native validity after MP4 select", bad, audit);
-    }
   }
 
   async function pickVideoFile() {
     const nextFile = await pickVideoFileFromUser();
-    purgeConstraintValidation();
     if (nextFile) acceptVideo(nextFile);
   }
 
@@ -155,7 +149,6 @@ export default function Home() {
   }
 
   async function submit() {
-    purgeConstraintValidation();
     if (!file && concern.trim().length < 8) {
       setError("動画を追加するか、立ち回り・目的を8文字以上書いてください。");
       setStatus("error");
@@ -264,7 +257,7 @@ export default function Home() {
                   </div>
                 </div>
               )}
-              <div className="mt-5 block space-y-2">
+              <label className="mt-5 block space-y-2">
                 <span className="text-[11px] font-semibold uppercase tracking-[0.13em] text-zinc-500">Game</span>
                 <div className="relative">
                   <select value={game} onChange={(event) => changeGame(event.target.value)} className="h-11 w-full appearance-none rounded-xl border border-white/[0.08] bg-white/[0.035] px-3.5 pr-10 text-sm text-zinc-200 outline-none transition focus:border-red-500/60 focus:ring-2 focus:ring-red-500/10" aria-label="Game">
@@ -272,22 +265,21 @@ export default function Home() {
                   </select>
                   <ChevronDown className="pointer-events-none absolute right-3.5 top-3.5 size-4 text-zinc-600" />
                 </div>
-              </div>
+              </label>
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
                 <SelectField label="Rank" value={rank} options={gameConfig.ranks} onChange={setRank} />
                 <SelectField label={gameConfig.characterLabel} value={character} options={gameConfig.characters} onChange={setCharacter} />
               </div>
-              <div className="mt-4 block space-y-2">
+              <label className="mt-4 block space-y-2">
                 <span className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.13em] text-zinc-500">Current struggle <span className="font-normal normal-case tracking-normal text-zinc-700">{concern.length}/240</span></span>
                 <Textarea value={concern} onChange={(event) => setConcern(event.target.value.slice(0, 240))} className="min-h-24 resize-none border-white/[0.08] bg-white/[0.035] text-sm leading-5 text-zinc-200 placeholder:text-zinc-700 focus-visible:border-red-500/60 focus-visible:ring-red-500/10" placeholder="例：近距離戦でエイムが下がり、先にダウンします" />
-              </div>
+              </label>
 
               {error && <div role="alert" className="mt-4 flex items-start gap-2 rounded-xl border border-red-500/20 bg-red-500/[0.08] p-3 text-xs leading-5 text-red-300"><AlertCircle className="mt-0.5 size-4 shrink-0" />{error}</div>}
               <button
                 type="button"
-                formNoValidate
                 data-testid="coach-submit"
-                onPointerDown={purgeConstraintValidation}
+                onPointerDown={removeDocumentFileInputs}
                 onClick={() => void submit()}
                 disabled={!canSubmit}
                 className="mt-5 flex h-12 w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-red-600 to-red-500 text-sm font-semibold text-white shadow-[0_10px_35px_rgba(220,38,38,.2)] hover:from-red-500 hover:to-red-400 disabled:pointer-events-none disabled:opacity-70"
