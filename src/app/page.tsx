@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  DragEvent, useEffect, useRef, useState, useSyncExternalStore,
+  DragEvent, MouseEvent, useEffect, useRef, useState, useSyncExternalStore,
 } from "react";
 import {
   AlertCircle, Check, ChevronDown, Crosshair, Dumbbell, FileVideo,
@@ -16,10 +16,12 @@ import { Textarea } from "@/components/ui/textarea";
 import type { CoachInsight, CoachResponse } from "@/lib/coach/types";
 import { gameConfigs, gameIds, type GameId } from "@/lib/games";
 import {
-  canUseOpenFilePicker,
+  fileFromDataTransfer,
+  installSafariValidityPatch,
   isSafariBrowser,
   pickVideoFileFromUser,
   removeDocumentFileInputs,
+  silenceNativeValidation,
 } from "@/lib/pick-video-file";
 import { isAllowedCoachVideo, normalizeCoachVideo } from "@/lib/video";
 
@@ -31,7 +33,7 @@ function subscribeNoop() {
 }
 
 function getSafariDropOnly() {
-  return isSafariBrowser() && !canUseOpenFilePicker();
+  return isSafariBrowser();
 }
 
 function Typewriter({ text, delay = 0 }: { text: string; delay?: number }) {
@@ -84,7 +86,7 @@ export default function Home() {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState("");
   const [result, setResult] = useState<CoachResponse | null>(null);
-  const safariDropOnly = useSyncExternalStore(subscribeNoop, getSafariDropOnly, () => false);
+  const safariDropOnly = useSyncExternalStore(subscribeNoop, getSafariDropOnly, () => true);
   const urlRef = useRef("");
   const gameConfig = gameConfigs[game];
   const hasNotes = concern.trim().length >= 8;
@@ -92,16 +94,20 @@ export default function Home() {
 
   useEffect(() => {
     removeDocumentFileInputs();
+    const undoValidityPatch = installSafariValidityPatch();
     const blockNative = (event: Event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      event.stopImmediatePropagation();
+      silenceNativeValidation(event);
     };
     window.addEventListener("submit", blockNative, true);
     window.addEventListener("invalid", blockNative, true);
+    document.addEventListener("submit", blockNative, true);
+    document.addEventListener("invalid", blockNative, true);
     return () => {
       window.removeEventListener("submit", blockNative, true);
       window.removeEventListener("invalid", blockNative, true);
+      document.removeEventListener("submit", blockNative, true);
+      document.removeEventListener("invalid", blockNative, true);
+      undoValidityPatch();
       if (urlRef.current) URL.revokeObjectURL(urlRef.current);
     };
   }, []);
@@ -128,7 +134,7 @@ export default function Home() {
   }
 
   async function pickVideoFile() {
-    if (isSafariBrowser() && !canUseOpenFilePicker()) {
+    if (isSafariBrowser()) {
       setError("Safariでは動画ファイルをドロップしてください。");
       return;
     }
@@ -140,8 +146,8 @@ export default function Home() {
     event.preventDefault();
     event.stopPropagation();
     setDragging(false);
-    const dropped = event.dataTransfer?.files;
-    const nextFile = dropped && dropped.length > 0 ? dropped.item(0) : null;
+    removeDocumentFileInputs();
+    const nextFile = fileFromDataTransfer(event.dataTransfer);
     if (nextFile) acceptVideo(nextFile);
   }
 
@@ -168,16 +174,18 @@ export default function Home() {
   }
 
   function onAnalyzePointerDown() {
-    removeDocumentFileInputs();
+    silenceNativeValidation();
   }
 
-  function onAnalyzeClick() {
-    removeDocumentFileInputs();
+  function onAnalyzeClick(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    silenceNativeValidation();
     void submit();
   }
 
   async function submit() {
-    removeDocumentFileInputs();
+    silenceNativeValidation();
     if (!file && concern.trim().length < 8) {
       setError("動画を追加するか、立ち回り・目的を8文字以上書いてください。");
       setStatus("error");
@@ -309,6 +317,7 @@ export default function Home() {
               {error && <div role="alert" className="mt-4 flex items-start gap-2 rounded-xl border border-red-500/20 bg-red-500/[0.08] p-3 text-xs leading-5 text-red-300"><AlertCircle className="mt-0.5 size-4 shrink-0" />{error}</div>}
               <button
                 type="button"
+                formNoValidate
                 data-testid="coach-submit"
                 onPointerDown={onAnalyzePointerDown}
                 onClick={onAnalyzeClick}

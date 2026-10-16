@@ -2,18 +2,30 @@
 
 type OpenFilePicker = (options?: { multiple?: boolean }) => Promise<Array<{ getFile: () => Promise<File> }>>;
 
-/** WebKit/Safari — never create <input type="file"> here; it treats accept as a pattern. */
+/** WebKit/Safari — never create <input type="file">; WebKit reports accept as patternMismatch. */
 export function isSafariBrowser() {
   if (typeof navigator === "undefined") return false;
   const ua = navigator.userAgent;
-  const vendor = navigator.vendor ?? "";
-  if (/Apple Computer/i.test(vendor)) return true;
+  if (/iP(hone|ad|od)/i.test(ua)) return true;
+  if (/Macintosh/i.test(ua) && /Mobile/i.test(ua)) return true;
+  if (/Apple Computer/i.test(navigator.vendor ?? "")) return true;
   return /Safari/i.test(ua) && !/Chrome|Chromium|CriOS|Edg|EdgiOS|OPR|Firefox|FxiOS|Android/i.test(ua);
 }
 
 export function canUseOpenFilePicker() {
   return typeof window !== "undefined"
-    && typeof (window as Window & { showOpenFilePicker?: OpenFilePicker }).showOpenFilePicker === "function";
+    && typeof (window as unknown as { showOpenFilePicker?: OpenFilePicker }).showOpenFilePicker === "function";
+}
+
+export function fileFromDataTransfer(transfer: DataTransfer | null): File | null {
+  const list = transfer?.files;
+  const raw = list && list.length > 0 ? list.item(0) : null;
+  if (!raw) return null;
+  return cloneCoachFile(raw);
+}
+
+export function cloneCoachFile(file: File) {
+  return new File([file], file.name, { type: file.type, lastModified: file.lastModified });
 }
 
 export function removeDocumentFileInputs() {
@@ -25,58 +37,61 @@ export function removeDocumentFileInputs() {
     input.removeAttribute("required");
     input.removeAttribute("pattern");
     input.removeAttribute("form");
+    try {
+      input.value = "";
+    } catch {
+      /* Safari may block value writes on file inputs. */
+    }
     input.remove();
   });
 }
 
-export async function pickVideoFileFromUser(): Promise<File | null> {
-  if (typeof window === "undefined" || typeof document === "undefined") return null;
-  removeDocumentFileInputs();
-
-  if (canUseOpenFilePicker()) {
-    try {
-      const picker = (window as unknown as { showOpenFilePicker: OpenFilePicker }).showOpenFilePicker;
-      const handles = await picker.call(window, { multiple: false });
-      const file = await handles[0]?.getFile();
-      return file ?? null;
-    } catch (error) {
-      if (isUserCancel(error) || isSafariBrowser()) return null;
-    }
+export function silenceNativeValidation(event?: Event) {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
   }
+  removeDocumentFileInputs();
+}
 
+export function installSafariValidityPatch() {
+  if (typeof window === "undefined" || !isSafariBrowser()) return () => undefined;
+  const proto = HTMLInputElement.prototype;
+  const report = proto.reportValidity;
+  const check = proto.checkValidity;
+  proto.reportValidity = function reportValidityPatched() {
+    if (this.type === "file") return true;
+    return report.call(this);
+  };
+  proto.checkValidity = function checkValidityPatched() {
+    if (this.type === "file") {
+      this.setCustomValidity("");
+      return true;
+    }
+    return check.call(this);
+  };
+  return () => {
+    proto.reportValidity = report;
+    proto.checkValidity = check;
+  };
+}
+
+export async function pickVideoFileFromUser(): Promise<File | null> {
+  if (typeof window === "undefined") return null;
   if (isSafariBrowser()) return null;
-  return pickWithDetachedInput();
-}
+  removeDocumentFileInputs();
+  if (!canUseOpenFilePicker()) return null;
 
-function isUserCancel(error: unknown) {
-  return error instanceof DOMException && (error.name === "AbortError" || error.name === "NotAllowedError");
-}
-
-function pickWithDetachedInput(): Promise<File | null> {
-  return new Promise((resolve) => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.multiple = false;
-    input.removeAttribute("accept");
-    input.removeAttribute("required");
-    input.removeAttribute("pattern");
-    input.removeAttribute("form");
-    input.removeAttribute("class");
-
-    let settled = false;
-    const finish = (file: File | null) => {
-      if (settled) return;
-      settled = true;
-      input.disabled = true;
-      input.value = "";
-      input.remove();
-      resolve(file);
-    };
-
-    input.addEventListener("change", () => {
-      finish(input.files?.[0] ?? null);
-    });
-    input.addEventListener("cancel", () => finish(null));
-    input.click();
-  });
+  try {
+    const picker = (window as unknown as { showOpenFilePicker: OpenFilePicker }).showOpenFilePicker;
+    const handles = await picker.call(window, { multiple: false });
+    const file = await handles[0]?.getFile();
+    return file ? cloneCoachFile(file) : null;
+  } catch (error) {
+    if (error instanceof DOMException && (error.name === "AbortError" || error.name === "NotAllowedError")) {
+      return null;
+    }
+    return null;
+  }
 }
