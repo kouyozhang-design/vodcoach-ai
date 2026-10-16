@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  DragEvent, useEffect, useRef, useState,
+  DragEvent, useEffect, useRef, useState, useSyncExternalStore,
 } from "react";
 import {
   AlertCircle, Check, ChevronDown, Crosshair, Dumbbell, FileVideo,
@@ -15,11 +15,24 @@ import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import type { CoachInsight, CoachResponse } from "@/lib/coach/types";
 import { gameConfigs, gameIds, type GameId } from "@/lib/games";
-import { pickVideoFileFromUser, removeDocumentFileInputs } from "@/lib/pick-video-file";
+import {
+  canUseOpenFilePicker,
+  isSafariBrowser,
+  pickVideoFileFromUser,
+  removeDocumentFileInputs,
+} from "@/lib/pick-video-file";
 import { isAllowedCoachVideo, normalizeCoachVideo } from "@/lib/video";
 
 const MAX_BYTES = 100 * 1024 * 1024;
 const insightIcons = { aim: Crosshair, positioning: Shield, abilities: Zap, practice: Dumbbell };
+
+function subscribeNoop() {
+  return () => undefined;
+}
+
+function getSafariDropOnly() {
+  return isSafariBrowser() && !canUseOpenFilePicker();
+}
 
 function Typewriter({ text, delay = 0 }: { text: string; delay?: number }) {
   const [visible, setVisible] = useState("");
@@ -71,6 +84,7 @@ export default function Home() {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState("");
   const [result, setResult] = useState<CoachResponse | null>(null);
+  const safariDropOnly = useSyncExternalStore(subscribeNoop, getSafariDropOnly, () => false);
   const urlRef = useRef("");
   const gameConfig = gameConfigs[game];
   const hasNotes = concern.trim().length >= 8;
@@ -114,6 +128,10 @@ export default function Home() {
   }
 
   async function pickVideoFile() {
+    if (isSafariBrowser() && !canUseOpenFilePicker()) {
+      setError("Safariでは動画ファイルをドロップしてください。");
+      return;
+    }
     const nextFile = await pickVideoFileFromUser();
     if (nextFile) acceptVideo(nextFile);
   }
@@ -122,7 +140,8 @@ export default function Home() {
     event.preventDefault();
     event.stopPropagation();
     setDragging(false);
-    const nextFile = event.dataTransfer.files?.[0];
+    const dropped = event.dataTransfer?.files;
+    const nextFile = dropped && dropped.length > 0 ? dropped.item(0) : null;
     if (nextFile) acceptVideo(nextFile);
   }
 
@@ -148,7 +167,17 @@ export default function Home() {
     setStatus(file ? "ready" : "empty");
   }
 
+  function onAnalyzePointerDown() {
+    removeDocumentFileInputs();
+  }
+
+  function onAnalyzeClick() {
+    removeDocumentFileInputs();
+    void submit();
+  }
+
   async function submit() {
+    removeDocumentFileInputs();
     if (!file && concern.trim().length < 8) {
       setError("動画を追加するか、立ち回り・目的を8文字以上書いてください。");
       setStatus("error");
@@ -237,13 +266,15 @@ export default function Home() {
                   onDragOver={(event) => event.preventDefault()}
                   onDragLeave={() => setDragging(false)}
                   onDrop={onDrop}
-                  onClick={pickVideoFile}
-                  className={`group flex min-h-40 cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed p-5 text-center transition sm:min-h-52 ${dragging ? "border-red-400 bg-red-500/10" : "border-white/10 bg-black/20 hover:border-red-500/40 hover:bg-red-500/[0.035]"}`}
+                  onClick={safariDropOnly ? undefined : pickVideoFile}
+                  className={`group flex min-h-40 flex-col items-center justify-center rounded-2xl border border-dashed p-5 text-center transition sm:min-h-52 ${safariDropOnly ? "" : "cursor-pointer"} ${dragging ? "border-red-400 bg-red-500/10" : "border-white/10 bg-black/20 hover:border-red-500/40 hover:bg-red-500/[0.035]"}`}
                 >
                   <div className="grid size-12 place-items-center rounded-2xl border border-white/[0.08] bg-white/[0.035] shadow-lg shadow-black/30"><UploadCloud className="size-5 text-red-400 transition group-hover:-translate-y-0.5" /></div>
-                  <p className="mt-4 text-sm font-medium">動画をドロップ、または選択</p>
-                  <p className="mt-1.5 text-[11px] text-zinc-600">{gameConfig.uploadHint}。クリップだけでも解析できます。</p>
-                  <Button type="button" size="sm" className="mt-4 bg-white text-black hover:bg-zinc-200" onClick={(event) => { event.stopPropagation(); pickVideoFile(); }}>ファイルを選ぶ</Button>
+                  <p className="mt-4 text-sm font-medium">{safariDropOnly ? "動画をドロップしてください" : "動画をドロップ、または選択"}</p>
+                  <p className="mt-1.5 text-[11px] text-zinc-600">{safariDropOnly ? "Safariではファイル選択の代わりに、クリップをここにドロップします。" : `${gameConfig.uploadHint}。クリップだけでも解析できます。`}</p>
+                  {!safariDropOnly && (
+                    <Button type="button" size="sm" className="mt-4 bg-white text-black hover:bg-zinc-200" onClick={(event) => { event.stopPropagation(); void pickVideoFile(); }}>ファイルを選ぶ</Button>
+                  )}
                 </div>
               ) : (
                 <div className="overflow-hidden rounded-2xl border border-white/[0.08] bg-black">
@@ -279,8 +310,8 @@ export default function Home() {
               <button
                 type="button"
                 data-testid="coach-submit"
-                onPointerDown={removeDocumentFileInputs}
-                onClick={() => void submit()}
+                onPointerDown={onAnalyzePointerDown}
+                onClick={onAnalyzeClick}
                 disabled={!canSubmit}
                 className="mt-5 flex h-12 w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-red-600 to-red-500 text-sm font-semibold text-white shadow-[0_10px_35px_rgba(220,38,38,.2)] hover:from-red-500 hover:to-red-400 disabled:pointer-events-none disabled:opacity-70"
               >

@@ -1,6 +1,21 @@
 "use client";
 
-/** Never render <input type="file"> in React/SSR. Prefer the File System Access picker. */
+type OpenFilePicker = (options?: { multiple?: boolean }) => Promise<Array<{ getFile: () => Promise<File> }>>;
+
+/** WebKit/Safari — never create <input type="file"> here; it treats accept as a pattern. */
+export function isSafariBrowser() {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent;
+  const vendor = navigator.vendor ?? "";
+  if (/Apple Computer/i.test(vendor)) return true;
+  return /Safari/i.test(ua) && !/Chrome|Chromium|CriOS|Edg|EdgiOS|OPR|Firefox|FxiOS|Android/i.test(ua);
+}
+
+export function canUseOpenFilePicker() {
+  return typeof window !== "undefined"
+    && typeof (window as Window & { showOpenFilePicker?: OpenFilePicker }).showOpenFilePicker === "function";
+}
+
 export function removeDocumentFileInputs() {
   if (typeof document === "undefined") return;
   document.querySelectorAll('input[type="file"]').forEach((node) => {
@@ -14,23 +29,22 @@ export function removeDocumentFileInputs() {
   });
 }
 
-type OpenFilePicker = (options?: { multiple?: boolean }) => Promise<Array<{ getFile: () => Promise<File> }>>;
-
 export async function pickVideoFileFromUser(): Promise<File | null> {
   if (typeof window === "undefined" || typeof document === "undefined") return null;
   removeDocumentFileInputs();
 
-  const picker = (window as Window & { showOpenFilePicker?: OpenFilePicker }).showOpenFilePicker;
-  if (typeof picker === "function") {
+  if (canUseOpenFilePicker()) {
     try {
+      const picker = (window as unknown as { showOpenFilePicker: OpenFilePicker }).showOpenFilePicker;
       const handles = await picker.call(window, { multiple: false });
       const file = await handles[0]?.getFile();
       return file ?? null;
     } catch (error) {
-      if (isUserCancel(error)) return null;
+      if (isUserCancel(error) || isSafariBrowser()) return null;
     }
   }
 
+  if (isSafariBrowser()) return null;
   return pickWithDetachedInput();
 }
 
