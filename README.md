@@ -4,7 +4,7 @@ VODCoach.AI is a responsive video-coaching prototype for Apex Legends and VALORA
 
 Clips are uploaded **directly to Vercel Blob** from the browser so they never pass through the Hobby 4.5MB request body cap. `/api/coach` receives only the Blob URL plus a few JPEG frames extracted in the browser. Safari never uses a file input; drop the clip instead.
 
-Without `OPENAI_API_KEY`, analysis falls back to the local mock. Set `COACH_PROVIDER=openai` and `OPENAI_API_KEY` on the server to use GPT-4o.
+Without `OPENAI_API_KEY`, analysis falls back to the local mock. Set `COACH_PROVIDER=openai` and `OPENAI_API_KEY` on the server to use gpt-4o-mini.
 
 ## Run it locally
 
@@ -40,7 +40,7 @@ OPENAI_API_KEY=
 BLOB_READ_WRITE_TOKEN=
 ```
 
-Leave them empty for mock notes-only. For real clip analysis, set Blob read/write token and, for GPT-4o, `COACH_PROVIDER=openai` plus `OPENAI_API_KEY`.
+Leave them empty for mock notes-only. For real clip analysis, set Blob read/write token and, for gpt-4o-mini, `COACH_PROVIDER=openai` plus `OPENAI_API_KEY`.
 
 Maximum clip size is about 80MB. The coaching API body stays small (JSON + JPEG frames).
 
@@ -67,7 +67,7 @@ src/
     ├── upload-clip.ts           # Direct Blob upload
     └── coach/
         ├── mock-provider.ts
-        ├── openai-provider.ts   # gpt-4o when COACH_PROVIDER=openai
+        ├── openai-provider.ts   # gpt-4o-mini when COACH_PROVIDER=openai
         └── types.ts
 ```
 

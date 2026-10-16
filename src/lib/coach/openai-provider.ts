@@ -32,7 +32,7 @@ class OpenAIVideoCoachProvider implements VideoCoachProvider {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o",
+        model: "gpt-4o-mini",
         temperature: 0.4,
         response_format: { type: "json_object" },
         messages: [
