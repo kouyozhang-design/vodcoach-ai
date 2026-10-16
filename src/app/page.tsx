@@ -24,7 +24,6 @@ import {
   silenceNativeValidation,
 } from "@/lib/pick-video-file";
 import { MAX_CLIP_BYTES } from "@/lib/blob";
-import { extractJpegFrames } from "@/lib/extract-frames";
 import { uploadClipToBlob } from "@/lib/upload-clip";
 import { isAllowedCoachVideo } from "@/lib/video";
 
@@ -205,9 +204,7 @@ export default function Home() {
     try {
       const trimmedConcern = concern.trim();
       let videoUrl: string | undefined;
-      let frames: Awaited<ReturnType<typeof extractJpegFrames>> = [];
       if (file) {
-        frames = await extractJpegFrames(videoRef.current, previewUrl);
         videoUrl = await uploadClipToBlob(file);
       }
       const response = await fetch("/api/coach", {
@@ -219,7 +216,6 @@ export default function Home() {
           character,
           concern: trimmedConcern,
           videoUrl,
-          frames,
         }),
       });
       const payload = await response.json();
@@ -330,9 +326,9 @@ export default function Home() {
                 disabled={!canSubmit}
                 className="mt-5 flex h-12 w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-red-600 to-red-500 text-sm font-semibold text-white shadow-[0_10px_35px_rgba(220,38,38,.2)] hover:from-red-500 hover:to-red-400 disabled:pointer-events-none disabled:opacity-70"
               >
-                {status === "analyzing" ? <LoaderCircle className="size-4 animate-spin" /> : <Sparkles className="size-4" />} {status === "analyzing" ? (file ? "フレームをスキャン中..." : "コーチングを生成中...") : "AIコーチに解析させる"}
+                {status === "analyzing" ? <LoaderCircle className="size-4 animate-spin" /> : <Sparkles className="size-4" />} {status === "analyzing" ? (file ? "クリップを解析中..." : "コーチングを生成中...") : "AIコーチに解析させる"}
               </button>
-              <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[9px] text-zinc-700"><Shield className="size-3 shrink-0" />{file || hasNotes ? "動画はクラウドへ直接送り、解析APIにはURLと抽出フレームだけを渡します。" : "動画を追加するか、立ち回り・目的を8文字以上書いてください。"}</p>
+              <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[9px] text-zinc-700"><Shield className="size-3 shrink-0" />{file || hasNotes ? "動画はクラウドへ直接送り、解析APIにはURLだけを渡します。" : "動画を追加するか、立ち回り・目的を8文字以上書いてください。"}</p>
             </div>
           </Card>
 
@@ -352,10 +348,10 @@ export default function Home() {
               <div className="relative flex min-h-[520px] flex-col items-center justify-center overflow-hidden px-6 text-center sm:min-h-[620px] sm:px-8">
                 <div className="absolute inset-x-0 top-[38%] h-px animate-pulse bg-gradient-to-r from-transparent via-red-500 to-transparent shadow-[0_0_18px_#ef4444]" />
                 <div className="relative grid size-20 place-items-center rounded-3xl border border-red-500/20 bg-red-500/[0.07]"><ScanLine className="size-8 animate-pulse text-red-400" /><span className="absolute -inset-2 animate-ping rounded-[28px] border border-red-500/10" /></div>
-                <p className="mt-7 text-lg font-semibold">{file ? "フレームをスキャン中" : "状況を分析中"}</p>
-                <p className="mt-2 text-xs text-zinc-600">{file ? (progress < 35 ? "動画をデコードしています" : progress < 70 ? "戦闘シーンと視点移動を検出しています" : "改善ポイントをコーチングに変換しています") : (progress < 35 ? "ランクと悩みを読み込んでいます" : progress < 70 ? "キャラと戦型の典型パターンを照合しています" : "改善ポイントをコーチングに変換しています")}</p>
+                <p className="mt-7 text-lg font-semibold">{file ? "クリップを解析中" : "状況を分析中"}</p>
+                <p className="mt-2 text-xs text-zinc-600">{file ? (progress < 35 ? "動画をクラウドへ送っています" : progress < 70 ? "映像の立ち回りと撃ち合いを読み取っています" : "改善ポイントをコーチングに変換しています") : (progress < 35 ? "ランクと悩みを読み込んでいます" : progress < 70 ? "キャラと戦型の典型パターンを照合しています" : "改善ポイントをコーチングに変換しています")}</p>
                 <Progress value={progress} className="mt-7 h-1.5 max-w-sm bg-white/[0.05] [&_[data-slot=progress-indicator]]:bg-gradient-to-r [&_[data-slot=progress-indicator]]:from-red-700 [&_[data-slot=progress-indicator]]:to-red-400" />
-                <div className="mt-3 flex w-full max-w-sm justify-between font-mono text-[9px] text-zinc-700"><span>FRAME_SCAN</span><span>{Math.round(progress)}%</span></div>
+                <div className="mt-3 flex w-full max-w-sm justify-between font-mono text-[9px] text-zinc-700"><span>{file ? "CLIP_SCAN" : "NOTES_PLAN"}</span><span>{Math.round(progress)}%</span></div>
               </div>
             )}
 

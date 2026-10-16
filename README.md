@@ -2,9 +2,9 @@
 
 VODCoach.AI is a responsive video-coaching prototype for Apex Legends and VALORANT. Choose the game, rank, and corresponding legend or agent. A match clip is optional.
 
-Clips are uploaded **directly to Vercel Blob** from the browser so they never pass through the Hobby 4.5MB request body cap. `/api/coach` receives only the Blob URL plus a few JPEG frames extracted in the browser. Safari never uses a file input; drop the clip instead.
+Clips are uploaded **directly to Vercel Blob** from the browser so they never pass through the Hobby 4.5MB request body cap. `/api/coach` receives JSON with the Blob HTTPS URL (no video bytes, no JPEG frames). Safari never uses a file input; drop the clip instead.
 
-Without `OPENAI_API_KEY`, analysis falls back to the local mock. Set `COACH_PROVIDER=openai` and `OPENAI_API_KEY` on the server to use gpt-4o-mini.
+Live coaching uses **Gemini video understanding** (`gemini-3.8-flash`). Set `COACH_PROVIDER=gemini` and `GEMINI_API_KEY` on the server. Without a key, analysis falls back to the local mock. Do not prefix secrets with `NEXT_PUBLIC_`.
 
 ## Run it locally
 
@@ -27,6 +27,7 @@ You need [Node.js](https://nodejs.org/) 20 or newer and npm.
 5. Open [http://localhost:3000](http://localhost:3000).
 6. Notes-only coaching works with no keys (8+ characters in the struggle field).
 7. Video coaching needs `BLOB_READ_WRITE_TOKEN` for the client upload. If it is missing, the app shows a Japanese error instead of sending the file to `/api/coach`.
+8. Real clip analysis also needs `GEMINI_API_KEY`. The server sends Gemini the Blob URL when possible, otherwise it uploads the clip through the Gemini Files API.
 
 ## Deploy on Vercel (Hobby / free)
 
@@ -35,14 +36,14 @@ Push this repository to GitHub, then import it in [Vercel](https://vercel.com). 
 Store secrets in Vercel **Environment Variables** (never `NEXT_PUBLIC_`, never in git):
 
 ```text
-COACH_PROVIDER=
-OPENAI_API_KEY=
+COACH_PROVIDER=gemini
+GEMINI_API_KEY=
 BLOB_READ_WRITE_TOKEN=
 ```
 
-Leave them empty for mock notes-only. For real clip analysis, set Blob read/write token and, for gpt-4o-mini, `COACH_PROVIDER=openai` plus `OPENAI_API_KEY`.
+Leave `GEMINI_API_KEY` empty for mock notes-only. For real clip analysis, set the Blob read/write token, `COACH_PROVIDER=gemini`, and `GEMINI_API_KEY`. After adding variables, Redeploy so the function picks them up.
 
-Maximum clip size is about 80MB. The coaching API body stays small (JSON + JPEG frames).
+Maximum clip size is about 80MB. The coaching API body stays small (JSON + a Blob URL). Hobby functions are capped around 60 seconds.
 
 ## Commands
 
@@ -63,11 +64,10 @@ src/
 │   ├── api/coach/route.ts       # JSON coaching endpoint
 │   └── page.tsx                 # Drop, preview, scan, and report UI
 └── lib/
-    ├── extract-frames.ts        # Browser JPEG frames (no ffmpeg)
     ├── upload-clip.ts           # Direct Blob upload
     └── coach/
         ├── mock-provider.ts
-        ├── openai-provider.ts   # gpt-4o-mini when COACH_PROVIDER=openai
+        ├── gemini-provider.ts   # gemini-3.8-flash when GEMINI_API_KEY is set
         └── types.ts
 ```
 
@@ -77,8 +77,8 @@ src/
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `videoUrl` | string | Optional HTTPS URL from Vercel Blob |
-| `frames` | array | Optional JPEG data URLs extracted in the browser |
+| `videoUrl` | string | Optional HTTPS URL from Vercel Blob. Gemini analyzes this video file. |
+| `frames` | array | Ignored by the live Gemini path. Kept for older clients. |
 | `game` | string | `apex-legends` or `valorant` |
 | `rank` | string | Must belong to the selected game |
 | `character` | string | Selected legend or agent |
