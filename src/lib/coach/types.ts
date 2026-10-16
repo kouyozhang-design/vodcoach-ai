@@ -8,8 +8,15 @@ export type CoachInsight = {
   action: string;
 };
 
+export type CoachFrame = {
+  timestamp: number;
+  mimeType: "image/jpeg";
+  dataUrl: string;
+};
+
 export type CoachRequest = {
-  video?: File;
+  videoUrl?: string;
+  frames?: CoachFrame[];
   game: GameId;
   rank: string;
   character: string;
@@ -27,4 +34,8 @@ export type CoachResponse = {
 
 export interface VideoCoachProvider {
   analyze(input: CoachRequest): Promise<CoachResponse>;
+}
+
+export function requestHasClip(input: Pick<CoachRequest, "videoUrl" | "frames">) {
+  return Boolean(input.videoUrl) || Boolean(input.frames && input.frames.length > 0);
 }

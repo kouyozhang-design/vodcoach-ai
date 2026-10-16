@@ -1,15 +1,17 @@
 # VODCoach.AI
 
-VODCoach.AI is a responsive video-coaching prototype for Apex Legends and VALORANT. Choose the game, rank, and corresponding legend or agent, then describe what you want to improve. A match clip is optional: the coach still returns four items covering aim, sightlines, ability usage, and a practice routine. If you do upload a clip, the UI previews it and the mock report uses timestamped, footage-based notes.
+VODCoach.AI is a responsive video-coaching prototype for Apex Legends and VALORANT. Choose the game, rank, and corresponding legend or agent. A match clip is optional.
 
-The current analysis is a local mock. Uploaded videos are parsed by the API but are not saved.
+Clips are uploaded **directly to Vercel Blob** from the browser so they never pass through the Hobby 4.5MB request body cap. `/api/coach` receives only the Blob URL plus a few JPEG frames extracted in the browser. Safari never uses a file input; drop the clip instead.
+
+Without `OPENAI_API_KEY`, analysis falls back to the local mock. Set `COACH_PROVIDER=openai` and `OPENAI_API_KEY` on the server to use GPT-4o.
 
 ## Run it locally
 
 You need [Node.js](https://nodejs.org/) 20 or newer and npm.
 
 1. Download or clone this repository.
-2. Open a terminal in the project folder.
+2. Copy `.env.example` to `.env.local`. Leave the values empty unless you have your own secrets. Never commit `.env.local`.
 3. Install dependencies:
 
    ```bash
@@ -23,23 +25,24 @@ You need [Node.js](https://nodejs.org/) 20 or newer and npm.
    ```
 
 5. Open [http://localhost:3000](http://localhost:3000).
-6. Choose Apex Legends or VALORANT. The character and rank options update automatically.
-7. Describe the struggle (at least 8 characters). You can submit immediately — video is optional.
-8. Optionally drop an MP4, WebM, or MOV clip into the upload area, confirm the preview plays, and submit for a VOD-style report.
+6. Notes-only coaching works with no keys (8+ characters in the struggle field).
+7. Video coaching needs `BLOB_READ_WRITE_TOKEN` for the client upload. If it is missing, the app shows a Japanese error instead of sending the file to `/api/coach`.
 
 ## Deploy on Vercel (Hobby / free)
 
-Push this repository to GitHub, then import it in [Vercel](https://vercel.com). Leave the Framework Preset as **Next.js**. Vercel runs `npm install` and `npm run build` from the repo root. Do not set `output: "export"` in `next.config.ts` — `POST /api/coach` needs a Node server.
+Push this repository to GitHub, then import it in [Vercel](https://vercel.com). Leave the Framework Preset as **Next.js**. Do not set `output: "export"` in `next.config.ts`.
 
-API keys are optional. The live app uses a local mock until you wire an OpenAI or Gemini adapter. Store secrets in Vercel **Environment Variables** with these names (never `NEXT_PUBLIC_`):
+Store secrets in Vercel **Environment Variables** (never `NEXT_PUBLIC_`, never in git):
 
 ```text
-COACH_PROVIDER=mock
+COACH_PROVIDER=
 OPENAI_API_KEY=
-GEMINI_API_KEY=
+BLOB_READ_WRITE_TOKEN=
 ```
 
-The Hobby plan limits request bodies to about 4.5MB, so large clips will be rejected. Notes-only coaching (no video) works on day one.
+Leave them empty for mock notes-only. For real clip analysis, set Blob read/write token and, for GPT-4o, `COACH_PROVIDER=openai` plus `OPENAI_API_KEY`.
+
+Maximum clip size is about 80MB. The coaching API body stays small (JSON + JPEG frames).
 
 ## Commands
 
@@ -56,53 +59,38 @@ npm run start     # Run the production build
 ```text
 src/
 ├── app/
-│   ├── api/coach/route.ts       # JSON or multipart coaching endpoint and validation
-│   ├── globals.css              # Tailwind and shadcn theme styles
-│   ├── layout.tsx               # Fonts, metadata, and root layout
-│   └── page.tsx                 # Upload, preview, scan, and report UI
-├── components/ui/               # Reusable shadcn/ui primitives
+│   ├── api/blob/upload/route.ts # Client token for @vercel/blob
+│   ├── api/coach/route.ts       # JSON coaching endpoint
+│   └── page.tsx                 # Drop, preview, scan, and report UI
 └── lib/
-    ├── games.ts                 # Typed per-game ranks, characters, labels, and defaults
-    ├── coach/
-    │   ├── mock-provider.ts      # Replaceable mock video-analysis provider
-    │   └── types.ts              # Provider request/response contract
-    └── utils.ts                  # Shared class-name helper
+    ├── extract-frames.ts        # Browser JPEG frames (no ffmpeg)
+    ├── upload-clip.ts           # Direct Blob upload
+    └── coach/
+        ├── mock-provider.ts
+        ├── openai-provider.ts   # gpt-4o when COACH_PROVIDER=openai
+        └── types.ts
 ```
 
 ## API
 
-`POST /api/coach` accepts `application/json` or `multipart/form-data`:
+`POST /api/coach` accepts JSON only (no video file body):
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `video` | File | Optional. MP4, WebM, or MOV; maximum 100MB. Omit for notes-only coaching. |
+| `videoUrl` | string | Optional HTTPS URL from Vercel Blob |
+| `frames` | array | Optional JPEG data URLs extracted in the browser |
 | `game` | string | `apex-legends` or `valorant` |
 | `rank` | string | Must belong to the selected game |
 | `character` | string | Selected legend or agent |
-| `concern` | string | At least 8 characters |
+| `concern` | string | At least 8 characters when there is no clip |
 
-The route validates rank and character against the typed configuration in `src/lib/games.ts`, then calls the `VideoCoachProvider` interface. Add another game by extending `gameIds` and `gameConfigs`; the UI and API validation consume the same source of truth.
-
-To connect GPT-4o, Gemini, or another video model:
-
-1. Create a provider implementing `VideoCoachProvider` from `src/lib/coach/types.ts`.
-2. Upload/sample the video as required by that provider.
-3. Return the same `CoachResponse` shape.
-4. Replace the exported provider in `src/lib/coach/mock-provider.ts` or move provider selection into an environment-based factory.
-
-This keeps the UI and API response contract unchanged when the model changes.
+`POST /api/blob/upload` is the `@vercel/blob` `handleUpload` endpoint. `GET /api/blob/upload` reports whether `BLOB_READ_WRITE_TOKEN` is set. It returns a Japanese error when the token is missing.
 
 ## Dependencies
 
 - Next.js App Router, React, and TypeScript
 - Tailwind CSS and shadcn/ui primitives
+- `@vercel/blob` for client uploads
 - Lucide React icons
 
-No database, authentication service, or AI key is required for the prototype.
-
-## Validation and privacy
-
-- Client and server both validate optional file type/size plus required game, rank, character, and concern.
-- Object URLs used for video previews are revoked when a file is replaced, cleared, or the page unmounts.
-- Errors, empty state, loading progress, and completed results each have dedicated UI.
-- Production integrations should add authentication, rate limits, persistent job status, provider timeouts, and content-safety checks.
+No database or authentication is required for the prototype.

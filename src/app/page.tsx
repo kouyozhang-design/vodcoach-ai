@@ -23,9 +23,12 @@ import {
   removeDocumentFileInputs,
   silenceNativeValidation,
 } from "@/lib/pick-video-file";
-import { isAllowedCoachVideo, normalizeCoachVideo } from "@/lib/video";
+import { MAX_CLIP_BYTES } from "@/lib/blob";
+import { extractJpegFrames } from "@/lib/extract-frames";
+import { uploadClipToBlob } from "@/lib/upload-clip";
+import { isAllowedCoachVideo } from "@/lib/video";
 
-const MAX_BYTES = 100 * 1024 * 1024;
+const MAX_BYTES = MAX_CLIP_BYTES;
 const insightIcons = { aim: Crosshair, positioning: Shield, abilities: Zap, practice: Dumbbell };
 
 function subscribeNoop() {
@@ -88,6 +91,7 @@ export default function Home() {
   const [result, setResult] = useState<CoachResponse | null>(null);
   const safariDropOnly = useSyncExternalStore(subscribeNoop, getSafariDropOnly, () => true);
   const urlRef = useRef("");
+  const videoRef = useRef<HTMLVideoElement>(null);
   const gameConfig = gameConfigs[game];
   const hasNotes = concern.trim().length >= 8;
   const canSubmit = status !== "analyzing" && (Boolean(file) || hasNotes);
@@ -120,7 +124,7 @@ export default function Home() {
       return;
     }
     if (nextFile.size > MAX_BYTES) {
-      setError("動画は100MB以下にしてください。");
+      setError("動画は80MB以下にしてください。");
       setStatus("error");
       return;
     }
@@ -200,22 +204,24 @@ export default function Home() {
     }, 90);
     try {
       const trimmedConcern = concern.trim();
-      let response: Response;
+      let videoUrl: string | undefined;
+      let frames: Awaited<ReturnType<typeof extractJpegFrames>> = [];
       if (file) {
-        const body = new FormData();
-        body.append("video", normalizeCoachVideo(file));
-        body.append("game", game);
-        body.append("rank", rank);
-        body.append("character", character);
-        body.append("concern", trimmedConcern);
-        response = await fetch("/api/coach", { method: "POST", body });
-      } else {
-        response = await fetch("/api/coach", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ game, rank, character, concern: trimmedConcern }),
-        });
+        frames = await extractJpegFrames(videoRef.current, previewUrl);
+        videoUrl = await uploadClipToBlob(file);
       }
+      const response = await fetch("/api/coach", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          game,
+          rank,
+          character,
+          concern: trimmedConcern,
+          videoUrl,
+          frames,
+        }),
+      });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "解析に失敗しました。");
       setProgress(100);
@@ -262,7 +268,7 @@ export default function Home() {
               <div className="mb-4 flex items-center justify-between">
                 <div>
                   <p className="text-sm font-semibold">01 · Match clip <span className="font-normal text-zinc-500">（任意）</span></p>
-                  <p className="mt-1 text-[11px] text-zinc-600">Macの.mov / .mp4 / .m4v / .webm 対応 · 最大100MB</p>
+                  <p className="mt-1 text-[11px] text-zinc-600">Macの.mov / .mp4 / .m4v / .webm 対応 · 最大80MB</p>
                 </div>
                 {file && <button type="button" onClick={clearVideo} className="grid size-8 place-items-center rounded-lg text-zinc-600 transition hover:bg-white/5 hover:text-white" aria-label="動画を削除"><X className="size-4" /></button>}
               </div>
@@ -287,7 +293,7 @@ export default function Home() {
               ) : (
                 <div className="overflow-hidden rounded-2xl border border-white/[0.08] bg-black">
                   <div className="relative aspect-video">
-                    <video src={previewUrl} controls playsInline className="size-full object-contain" aria-label="アップロード動画プレビュー" />
+                    <video ref={videoRef} src={previewUrl} controls playsInline className="size-full object-contain" aria-label="アップロード動画プレビュー" />
                     <div className="pointer-events-none absolute left-3 top-3 flex items-center gap-1.5 rounded-md bg-black/70 px-2 py-1 text-[9px] uppercase tracking-wider text-red-300 backdrop-blur"><span className="size-1.5 rounded-full bg-red-500" />Preview ready</div>
                   </div>
                   <div className="flex items-center justify-between border-t border-white/[0.06] px-3 py-2.5">
@@ -326,7 +332,7 @@ export default function Home() {
               >
                 {status === "analyzing" ? <LoaderCircle className="size-4 animate-spin" /> : <Sparkles className="size-4" />} {status === "analyzing" ? (file ? "フレームをスキャン中..." : "コーチングを生成中...") : "AIコーチに解析させる"}
               </button>
-              <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[9px] text-zinc-700"><Shield className="size-3 shrink-0" />{file || hasNotes ? "動画だけでも解析できます。アップロードしたクリップは保存しません。" : "動画を追加するか、立ち回り・目的を8文字以上書いてください。"}</p>
+              <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[9px] text-zinc-700"><Shield className="size-3 shrink-0" />{file || hasNotes ? "動画はクラウドへ直接送り、解析APIにはURLと抽出フレームだけを渡します。" : "動画を追加するか、立ち回り・目的を8文字以上書いてください。"}</p>
             </div>
           </Card>
 

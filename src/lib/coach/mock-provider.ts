@@ -1,4 +1,5 @@
 import type { CoachInsight, CoachRequest, CoachResponse, VideoCoachProvider } from "./types";
+import { requestHasClip } from "./types";
 
 class MockVideoCoachProvider implements VideoCoachProvider {
   async analyze(input: CoachRequest): Promise<CoachResponse> {
@@ -17,7 +18,7 @@ function purposeOf(input: CoachRequest, hasVideo: boolean) {
 }
 
 function buildCoachResponse(input: CoachRequest): CoachResponse {
-  const hasVideo = Boolean(input.video);
+  const hasVideo = requestHasClip(input);
   const isApex = input.game === "apex-legends";
   const purpose = purposeOf(input, hasVideo);
 
