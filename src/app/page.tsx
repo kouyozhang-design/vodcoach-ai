@@ -4,17 +4,23 @@ import {
   DragEvent, MouseEvent, useEffect, useRef, useState, useSyncExternalStore,
 } from "react";
 import {
-  AlertCircle, Check, ChevronDown, Crosshair, Dumbbell, FileVideo,
-  Gamepad2, LoaderCircle, Play, ScanLine, Shield, Sparkles, UploadCloud,
-  X, Zap,
+  AlertCircle, Check, ChevronDown, FileVideo, Gamepad2, LoaderCircle,
+  Monitor, Play, ScanLine, Shield, Sparkles, UploadCloud, X,
 } from "lucide-react";
+import { InsightCard } from "@/components/insight-card";
+import { LiveSession } from "@/components/live-session";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
-import type { CoachInsight, CoachResponse } from "@/lib/coach/types";
+import { requestCoach } from "@/lib/coach/client";
+import type { CoachChunkReport, CoachResponse } from "@/lib/coach/types";
+import { extractJpegFramesInRange } from "@/lib/extract-frames";
 import { gameConfigs, gameIds, type GameId } from "@/lib/games";
+import {
+  formatTimestamp, isLongMatch, MATCH_COVER_MAX_SEC, planMatchChunks,
+} from "@/lib/match-plan";
 import {
   fileFromDataTransfer,
   installSafariValidityPatch,
@@ -23,12 +29,12 @@ import {
   removeDocumentFileInputs,
   silenceNativeValidation,
 } from "@/lib/pick-video-file";
+import { probeVideoDuration } from "@/lib/probe-video";
 import { MAX_CLIP_BYTES } from "@/lib/blob";
 import { uploadClipToBlob } from "@/lib/upload-clip";
 import { isAllowedCoachVideo } from "@/lib/video";
 
 const MAX_BYTES = MAX_CLIP_BYTES;
-const insightIcons = { aim: Crosshair, positioning: Shield, abilities: Zap, practice: Dumbbell };
 
 function subscribeNoop() {
   return () => undefined;
@@ -36,23 +42,6 @@ function subscribeNoop() {
 
 function getSafariDropOnly() {
   return isSafariBrowser();
-}
-
-function Typewriter({ text, delay = 0 }: { text: string; delay?: number }) {
-  const [visible, setVisible] = useState("");
-  useEffect(() => {
-    let index = 0;
-    let interval = 0;
-    const timeout = window.setTimeout(() => {
-      interval = window.setInterval(() => {
-        index += 2;
-        setVisible(text.slice(0, index));
-        if (index >= text.length) window.clearInterval(interval);
-      }, 12);
-    }, delay);
-    return () => { window.clearTimeout(timeout); window.clearInterval(interval); };
-  }, [delay, text]);
-  return <>{visible}{visible.length < text.length && <span className="ml-0.5 inline-block h-3.5 w-px animate-pulse bg-red-400 align-middle" />}</>;
 }
 
 function SelectField({
@@ -76,7 +65,11 @@ function SelectField({
   );
 }
 
+type AppMode = "vod" | "live";
+type VodStatus = "empty" | "ready" | "analyzing" | "complete" | "error";
+
 export default function Home() {
+  const [appMode, setAppMode] = useState<AppMode>("vod");
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState("");
   const [game, setGame] = useState<GameId>("apex-legends");
@@ -84,8 +77,9 @@ export default function Home() {
   const [character, setCharacter] = useState(gameConfigs["apex-legends"].defaultCharacter);
   const [concern, setConcern] = useState(gameConfigs["apex-legends"].defaultConcern);
   const [dragging, setDragging] = useState(false);
-  const [status, setStatus] = useState<"empty" | "ready" | "analyzing" | "complete" | "error">("empty");
+  const [status, setStatus] = useState<VodStatus>("empty");
   const [progress, setProgress] = useState(0);
+  const [progressLabel, setProgressLabel] = useState("");
   const [error, setError] = useState("");
   const [result, setResult] = useState<CoachResponse | null>(null);
   const safariDropOnly = useSyncExternalStore(subscribeNoop, getSafariDropOnly, () => true);
@@ -197,31 +191,97 @@ export default function Home() {
     setError("");
     setResult(null);
     setProgress(4);
+    setProgressLabel(file ? "動画を準備しています" : "ノートからプランを作っています");
     setStatus("analyzing");
     const timer = window.setInterval(() => {
-      setProgress((current) => Math.min(current + Math.max(1, (96 - current) * 0.07), 96));
-    }, 90);
+      setProgress((current) => Math.min(current + Math.max(1, (96 - current) * 0.04), 96));
+    }, 120);
     try {
       const trimmedConcern = concern.trim();
-      let videoUrl: string | undefined;
-      if (file) {
-        videoUrl = await uploadClipToBlob(file);
+      const base = { game, rank, character, concern: trimmedConcern };
+      if (!file) {
+        const payload = await requestCoach({ ...base, mode: "clip" });
+        setProgress(100);
+        setResult(payload);
+        window.setTimeout(() => setStatus("complete"), 260);
+        return;
       }
-      const response = await fetch("/api/coach", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          game,
-          rank,
-          character,
-          concern: trimmedConcern,
-          videoUrl,
-        }),
+
+      setProgressLabel("動画の長さを確認しています");
+      const duration = await probeVideoDuration(file);
+      const match = isLongMatch(duration);
+      setProgressLabel("動画をクラウドへ送っています");
+      const videoUrl = await uploadClipToBlob(file);
+
+      if (!match || duration == null) {
+        setProgressLabel("クリップを解析しています");
+        const payload = await requestCoach({ ...base, videoUrl, mode: "clip", durationSec: duration ?? undefined });
+        setProgress(100);
+        setResult(payload);
+        window.setTimeout(() => setStatus("complete"), 260);
+        return;
+      }
+
+      const chunks = planMatchChunks(duration);
+      const truncated = duration > MATCH_COVER_MAX_SEC;
+      const reports: CoachChunkReport[] = [];
+      let failed = 0;
+      for (const chunk of chunks) {
+        const label = `区間 ${chunk.index + 1}/${chunks.length}（${formatTimestamp(chunk.startSec)}–${formatTimestamp(chunk.endSec)}）を解析中`;
+        setProgressLabel(label);
+        setProgress(8 + Math.round((chunk.index / Math.max(1, chunks.length)) * 78));
+        try {
+          const frames = await extractJpegFramesInRange(
+            videoRef.current,
+            previewUrl,
+            chunk.startSec,
+            chunk.endSec,
+            6,
+          );
+          const payload = await requestCoach({
+            ...base,
+            videoUrl,
+            frames,
+            mode: "match-chunk",
+            startOffsetSec: chunk.startSec,
+            endOffsetSec: chunk.endSec,
+            durationSec: duration,
+            chunkIndex: chunk.index,
+            chunkCount: chunks.length,
+          });
+          reports.push({
+            headline: payload.headline,
+            summary: payload.summary,
+            insights: payload.insights,
+            startOffsetSec: chunk.startSec,
+            endOffsetSec: chunk.endSec,
+          });
+        } catch {
+          failed += 1;
+        }
+      }
+
+      if (reports.length === 0) {
+        throw new Error("試合のどの区間も解析できませんでした。短いクリップで試すか、もう一度お試しください。");
+      }
+
+      setProgressLabel("試合レポートを1本にまとめています");
+      setProgress(92);
+      const merged = await requestCoach({
+        ...base,
+        mode: "match-merge",
+        durationSec: duration,
+        chunkReports: reports,
       });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || "解析に失敗しました。");
+      if (truncated) {
+        merged.truncated = true;
+        merged.summary = `${merged.summary} 長さの上限（約${Math.round(MATCH_COVER_MAX_SEC / 60)}分）を超えた後半は対象外です。`;
+      }
+      if (failed > 0) {
+        merged.summary = `${merged.summary} ${failed}区間はタイムアウトまたは接続エラーでスキップしました。`;
+      }
       setProgress(100);
-      setResult(payload as CoachResponse);
+      setResult(merged);
       window.setTimeout(() => setStatus("complete"), 260);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "解析に失敗しました。");
@@ -230,6 +290,9 @@ export default function Home() {
       window.clearInterval(timer);
     }
   }
+
+  const reportKind = result?.kind ?? (file ? "clip" : "notes");
+  const insightInstant = Boolean(result && result.insights.length > 6);
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#070708] text-white">
@@ -242,29 +305,78 @@ export default function Home() {
               <span className="absolute -right-1 -top-2 text-2xl font-black italic text-white/15">A</span>
               <Gamepad2 className="relative size-5" />
             </div>
-            <div><p className="text-[15px] font-bold tracking-[-0.03em]">VODCoach<span className="text-red-500">.AI</span></p><p className="text-[9px] uppercase tracking-[0.2em] text-zinc-600">Multigame intelligence</p></div>
+            <div>
+              <p className="text-[15px] font-bold tracking-[-0.03em]">VODCoach<span className="text-red-500">.AI</span></p>
+              <p className="text-[9px] uppercase tracking-[0.2em] text-zinc-600">Multigame intelligence</p>
+            </div>
           </div>
           <div className="flex items-center gap-3">
-            <Badge className="border border-red-500/15 bg-red-500/10 text-[10px] text-red-300"><span className="mr-1.5 size-1.5 animate-pulse rounded-full bg-red-400" />Analyzer online</Badge>
-            <span className="hidden text-[10px] text-zinc-700 sm:inline">Prototype · Local mock</span>
+            <Badge className="border border-red-500/15 bg-red-500/10 text-[10px] text-red-300">
+              <span className="mr-1.5 size-1.5 animate-pulse rounded-full bg-red-400" />Analyzer online
+            </Badge>
+            <span className="hidden text-[10px] text-zinc-700 sm:inline">Apex · VALORANT</span>
           </div>
         </header>
 
         <section className="pb-7 pt-9 sm:pt-12">
-          <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-red-400"><ScanLine className="size-3.5" />Clip or notes coaching</div>
+          <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-red-400">
+            <ScanLine className="size-3.5" />Match VOD and live PC coaching
+          </div>
           <h1 className="mt-3 max-w-3xl text-4xl font-semibold leading-[1.04] tracking-[-0.05em] sm:text-5xl lg:text-[58px]">
-            ゲームを問わず、<span className="inline-block bg-gradient-to-r from-red-300 via-red-500 to-orange-400 bg-clip-text text-transparent">映像から改善。</span>
+            試合一本も、プレイ中も、<span className="inline-block bg-gradient-to-r from-red-300 via-red-500 to-orange-400 bg-clip-text text-transparent">映像から改善。</span>
           </h1>
-          <p className="mt-4 max-w-xl text-sm leading-6 text-zinc-500">Apex LegendsとVALORANTに対応。クリップだけでも、立ち回り・プレイスタイル・目的に寄せた改善策を返せます。説明文は任意です。</p>
+          <p className="mt-4 max-w-2xl text-sm leading-6 text-zinc-500">
+            Apex LegendsとVALORANT。短いクリップはそのまま解析し、長い試合は時間分割してタイムスタンプ付きの一本レポートにまとめます。PCでは画面共有でライブ指摘も出せます。
+          </p>
+          <div className="mt-6 inline-flex rounded-full border border-white/[0.08] bg-white/[0.03] p-1">
+            <button
+              type="button"
+              onClick={() => setAppMode("vod")}
+              className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition ${appMode === "vod" ? "bg-red-600 text-white" : "text-zinc-400 hover:text-white"}`}
+            >
+              <ScanLine className="size-3.5" />試合一本 / クリップ
+            </button>
+            <button
+              type="button"
+              onClick={() => setAppMode("live")}
+              className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition ${appMode === "live" ? "bg-red-600 text-white" : "text-zinc-400 hover:text-white"}`}
+            >
+              <Monitor className="size-3.5" />PCライブ
+            </button>
+          </div>
         </section>
 
+        {appMode === "live" && (
+          <>
+            <div className="mb-4 grid gap-4 lg:grid-cols-[1fr_1fr_1fr_1.4fr]">
+              <label className="space-y-2">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.13em] text-zinc-500">Game</span>
+                <div className="relative">
+                  <select value={game} onChange={(event) => changeGame(event.target.value)} className="h-11 w-full appearance-none rounded-xl border border-white/[0.08] bg-white/[0.035] px-3.5 pr-10 text-sm text-zinc-200 outline-none transition focus:border-red-500/60 focus:ring-2 focus:ring-red-500/10" aria-label="Game">
+                    {gameIds.map((gameId) => <option key={gameId} value={gameId}>{gameConfigs[gameId].name}</option>)}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-3.5 top-3.5 size-4 text-zinc-600" />
+                </div>
+              </label>
+              <SelectField label="Rank" value={rank} options={gameConfig.ranks} onChange={setRank} />
+              <SelectField label={gameConfig.characterLabel} value={character} options={gameConfig.characters} onChange={setCharacter} />
+              <label className="space-y-2">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.13em] text-zinc-500">Focus</span>
+                <Textarea value={concern} onChange={(event) => setConcern(event.target.value.slice(0, 240))} className="min-h-11 resize-none border-white/[0.08] bg-white/[0.035] px-3.5 py-2.5 text-sm leading-5 text-zinc-200 placeholder:text-zinc-700 focus-visible:border-red-500/60 focus-visible:ring-red-500/10" placeholder="今意識したいこと（任意）" />
+              </label>
+            </div>
+            <LiveSession game={game} rank={rank} character={character} concern={concern} />
+          </>
+        )}
+
+        {appMode === "vod" && (
         <div className="grid gap-4 xl:grid-cols-[0.86fr_1.14fr]">
           <Card className="border-white/[0.08] bg-[#0e0e10]/95 p-0 text-white shadow-2xl shadow-black/40">
             <div className="p-4 sm:p-5">
               <div className="mb-4 flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-semibold">01 · Match clip <span className="font-normal text-zinc-500">（任意）</span></p>
-                  <p className="mt-1 text-[11px] text-zinc-600">Macの.mov / .mp4 / .m4v / .webm 対応 · 最大80MB</p>
+                  <p className="text-sm font-semibold">01 · Match VOD <span className="font-normal text-zinc-500">（任意）</span></p>
+                  <p className="mt-1 text-[11px] text-zinc-600">Macの.mov / .mp4 / .m4v / .webm · 最大80MB · 長い試合は自動分割</p>
                 </div>
                 {file && <button type="button" onClick={clearVideo} className="grid size-8 place-items-center rounded-lg text-zinc-600 transition hover:bg-white/5 hover:text-white" aria-label="動画を削除"><X className="size-4" /></button>}
               </div>
@@ -326,9 +438,9 @@ export default function Home() {
                 disabled={!canSubmit}
                 className="mt-5 flex h-12 w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-red-600 to-red-500 text-sm font-semibold text-white shadow-[0_10px_35px_rgba(220,38,38,.2)] hover:from-red-500 hover:to-red-400 disabled:pointer-events-none disabled:opacity-70"
               >
-                {status === "analyzing" ? <LoaderCircle className="size-4 animate-spin" /> : <Sparkles className="size-4" />} {status === "analyzing" ? (file ? "クリップを解析中..." : "コーチングを生成中...") : "AIコーチに解析させる"}
+                {status === "analyzing" ? <LoaderCircle className="size-4 animate-spin" /> : <Sparkles className="size-4" />} {status === "analyzing" ? (file ? "試合を解析中..." : "コーチングを生成中...") : "AIコーチに解析させる"}
               </button>
-              <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[9px] text-zinc-700"><Shield className="size-3 shrink-0" />{file || hasNotes ? "動画はクラウドへ直接送り、解析APIにはURLだけを渡します。" : "動画を追加するか、立ち回り・目的を8文字以上書いてください。"}</p>
+              <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[9px] text-zinc-700"><Shield className="size-3 shrink-0" />{file || hasNotes ? "動画はクラウドへ直接送り、解析APIにはURLだけを渡します。長い試合は約40秒ごとに分け、Hobbyの制限内で一本にまとめます。" : "動画を追加するか、立ち回り・目的を8文字以上書いてください。"}</p>
             </div>
           </Card>
 
@@ -336,10 +448,10 @@ export default function Home() {
             {(status === "empty" || status === "ready" || status === "error") && (
               <div className="flex min-h-[520px] flex-col items-center justify-center px-6 py-10 text-center sm:min-h-[620px] sm:px-8">
                 <div className="relative"><div className="absolute -inset-7 rounded-full bg-red-500/10 blur-2xl" /><div className="relative grid size-16 place-items-center rounded-2xl border border-white/[0.08] bg-white/[0.03]"><Play className="ml-1 size-6 fill-red-500/20 text-red-400" /></div></div>
-                <p className="mt-6 text-base font-semibold">{file ? "クリップの解析準備ができました" : "動画だけでもコーチングできます"}</p>
-                <p className="mt-2 max-w-sm text-xs leading-5 text-zinc-600">{file ? "説明は任意です。解析すると立ち回り・プレイスタイル・目的に寄せた4項目が出ます。" : "クリップをドロップするか、立ち回り・目的を書いて解析を開始できます。"}</p>
+                <p className="mt-6 text-base font-semibold">{file ? "解析の準備ができました" : "動画だけでもコーチングできます"}</p>
+                <p className="mt-2 max-w-sm text-xs leading-5 text-zinc-600">{file ? "90秒以下はそのまま。それより長い試合は分割して、タイムスタンプ付きの指摘を1つのレポートにまとめます。" : "クリップまたは試合一本をドロップするか、立ち回り・目的を書いて解析を開始できます。"}</p>
                 <div className="mt-7 grid w-full max-w-md grid-cols-2 gap-2 text-left sm:grid-cols-4">
-                  {["Aim", "Sightlines", "Abilities", "Practice"].map((item, index) => <div key={item} className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5"><span className="text-[9px] text-red-400">0{index + 1}</span><p className="mt-1 text-[10px] text-zinc-500">{item}</p></div>)}
+                  {["Aim", "Sightlines", "Abilities", "Scenes"].map((item, index) => <div key={item} className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5"><span className="text-[9px] text-red-400">0{index + 1}</span><p className="mt-1 text-[10px] text-zinc-500">{item}</p></div>)}
                 </div>
               </div>
             )}
@@ -348,10 +460,10 @@ export default function Home() {
               <div className="relative flex min-h-[520px] flex-col items-center justify-center overflow-hidden px-6 text-center sm:min-h-[620px] sm:px-8">
                 <div className="absolute inset-x-0 top-[38%] h-px animate-pulse bg-gradient-to-r from-transparent via-red-500 to-transparent shadow-[0_0_18px_#ef4444]" />
                 <div className="relative grid size-20 place-items-center rounded-3xl border border-red-500/20 bg-red-500/[0.07]"><ScanLine className="size-8 animate-pulse text-red-400" /><span className="absolute -inset-2 animate-ping rounded-[28px] border border-red-500/10" /></div>
-                <p className="mt-7 text-lg font-semibold">{file ? "クリップを解析中" : "状況を分析中"}</p>
-                <p className="mt-2 text-xs text-zinc-600">{file ? (progress < 35 ? "動画をクラウドへ送っています" : progress < 70 ? "映像の立ち回りと撃ち合いを読み取っています" : "改善ポイントをコーチングに変換しています") : (progress < 35 ? "ランクと悩みを読み込んでいます" : progress < 70 ? "キャラと戦型の典型パターンを照合しています" : "改善ポイントをコーチングに変換しています")}</p>
+                <p className="mt-7 text-lg font-semibold">{file ? "試合を解析中" : "状況を分析中"}</p>
+                <p className="mt-2 text-xs text-zinc-600">{progressLabel || (file ? "映像の立ち回りと撃ち合いを読み取っています" : "改善ポイントをコーチングに変換しています")}</p>
                 <Progress value={progress} className="mt-7 h-1.5 max-w-sm bg-white/[0.05] [&_[data-slot=progress-indicator]]:bg-gradient-to-r [&_[data-slot=progress-indicator]]:from-red-700 [&_[data-slot=progress-indicator]]:to-red-400" />
-                <div className="mt-3 flex w-full max-w-sm justify-between font-mono text-[9px] text-zinc-700"><span>{file ? "CLIP_SCAN" : "NOTES_PLAN"}</span><span>{Math.round(progress)}%</span></div>
+                <div className="mt-3 flex w-full max-w-sm justify-between font-mono text-[9px] text-zinc-700"><span>{file ? "MATCH_SCAN" : "NOTES_PLAN"}</span><span>{Math.round(progress)}%</span></div>
               </div>
             )}
 
@@ -359,35 +471,25 @@ export default function Home() {
               <div className="animate-in fade-in slide-in-from-bottom-2 duration-700">
                 <div className="flex items-center justify-between border-b border-white/[0.06] px-5 py-4 sm:px-6">
                   <div><div className="flex items-center gap-2"><Check className="size-3.5 text-emerald-400" /><p className="text-sm font-semibold">{result.headline}</p></div><p className="mt-1 pl-5.5 font-mono text-[9px] text-zinc-700">ANALYSIS · {result.analysisId.slice(0, 8).toUpperCase()}</p></div>
-                  <Badge className="border border-emerald-500/15 bg-emerald-500/10 text-[9px] text-emerald-400">{file ? "SCAN COMPLETE" : "NOTES PLAN"}</Badge>
+                  <Badge className="border border-emerald-500/15 bg-emerald-500/10 text-[9px] text-emerald-400">
+                    {reportKind === "match" ? "MATCH REPORT" : reportKind === "clip" ? "SCAN COMPLETE" : "NOTES PLAN"}
+                  </Badge>
                 </div>
                 <div className="p-5 sm:p-6">
-                  <p className="text-sm leading-6 text-zinc-300"><Typewriter text={result.summary} /></p>
-                  <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                    {result.insights.map((insight, index) => <InsightCard key={insight.id} insight={insight} index={index} />)}
+                  <p className="text-sm leading-6 text-zinc-300">{result.summary}</p>
+                  <div className={`mt-6 grid gap-3 ${result.insights.length > 4 ? "sm:grid-cols-2" : "sm:grid-cols-2"}`}>
+                    {result.insights.map((insight, index) => (
+                      <InsightCard key={`${insight.id}-${index}`} insight={insight} index={index} instant={insightInstant} />
+                    ))}
                   </div>
                 </div>
               </div>
             )}
           </Card>
         </div>
-        <footer className="mt-5 flex flex-col items-center justify-between gap-2 border-t border-white/[0.05] pt-5 text-[9px] uppercase tracking-[0.13em] text-zinc-800 sm:flex-row"><span>VODCoach.AI · Multigame intelligence</span><span>Built for the next round</span></footer>
+        )}
+        <footer className="mt-5 flex flex-col items-center justify-between gap-2 border-t border-white/[0.05] pt-5 text-[9px] uppercase tracking-[0.13em] text-zinc-800 sm:flex-row"><span>VODCoach.AI · Apex · VALORANT</span><span>Match VOD · Live PC · No in-game overlay</span></footer>
       </div>
     </main>
-  );
-}
-
-function InsightCard({ insight, index }: { insight: CoachInsight; index: number }) {
-  const Icon = insightIcons[insight.id];
-  return (
-    <article className={`rounded-2xl border p-4 ${insight.id === "practice" ? "border-red-500/20 bg-gradient-to-br from-red-500/[0.09] to-transparent" : "border-white/[0.07] bg-white/[0.022]"}`}>
-      <div className="flex items-start justify-between">
-        <div className="grid size-8 place-items-center rounded-lg bg-red-500/10"><Icon className="size-4 text-red-400" /></div>
-        <span className="font-mono text-[9px] text-zinc-700">{insight.timestamp ?? `0${index + 1}`}</span>
-      </div>
-      <h2 className="mt-3 text-xs font-semibold">{insight.title}</h2>
-      <p className="mt-2 min-h-10 text-[10px] leading-4 text-zinc-600"><Typewriter text={insight.finding} delay={120 + index * 180} /></p>
-      <div className="mt-3 border-t border-white/[0.05] pt-3"><p className="text-[9px] font-semibold uppercase tracking-wider text-red-400">Coach action</p><p className="mt-1 text-[10px] leading-4 text-zinc-400"><Typewriter text={insight.action} delay={320 + index * 180} /></p></div>
-    </article>
   );
 }

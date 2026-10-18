@@ -30,7 +30,7 @@ export const gameConfigs: Record<GameId, GameConfig> = {
     defaultRank: "Gold",
     defaultCharacter: "Wraith",
     defaultConcern: "近距離戦でエイムが下がり、遮蔽から離れすぎて先にダウンしてしまいます。",
-    uploadHint: "撃ち合いが含まれる30〜90秒のクリップがおすすめ",
+    uploadHint: "短いクリップでも、数分の試合一本でも解析できます",
   },
   valorant: {
     id: "valorant",
@@ -47,7 +47,7 @@ export const gameConfigs: Record<GameId, GameConfig> = {
     defaultRank: "Gold",
     defaultCharacter: "Jett",
     defaultConcern: "サイト進入時にクロスヘアがずれ、味方と同時にピークできず最初に倒されます。",
-    uploadHint: "ラウンド全体または交戦前後30〜90秒のクリップがおすすめ",
+    uploadHint: "ラウンドクリップでも、試合の長いVODでも解析できます",
   },
 };
 

@@ -7,6 +7,7 @@ export type CoachFrame = {
 };
 
 const FRAME_COUNT = 4;
+const MATCH_FRAME_COUNT = 6;
 const MAX_WIDTH = 640;
 const JPEG_QUALITY = 0.55;
 
@@ -15,15 +16,28 @@ export async function extractJpegFrames(
   video: HTMLVideoElement | null,
   src?: string,
 ): Promise<CoachFrame[]> {
+  return extractJpegFramesInRange(video, src, 0, undefined, FRAME_COUNT);
+}
+
+/** Sample JPEGs inside a time window (match chunks). Seeks; does not play in realtime. */
+export async function extractJpegFramesInRange(
+  video: HTMLVideoElement | null,
+  src: string | undefined,
+  startSec: number,
+  endSec?: number,
+  count = MATCH_FRAME_COUNT,
+): Promise<CoachFrame[]> {
   const player = await readyPlayer(video, src);
   if (!player) return [];
 
   const duration = Number.isFinite(player.duration) && player.duration > 0 ? player.duration : 1;
+  const start = Math.max(0, startSec);
+  const end = Math.min(duration, endSec == null || endSec <= start ? duration : endSec);
   const canvas = document.createElement("canvas");
   const context = canvas.getContext("2d");
   if (!context) return [];
 
-  const times = sampleTimes(duration, FRAME_COUNT);
+  const times = sampleTimesInRange(start, end, count);
   const frames: CoachFrame[] = [];
 
   try {
@@ -51,11 +65,12 @@ export async function extractJpegFrames(
   return frames;
 }
 
-function sampleTimes(duration: number, count: number) {
-  if (count <= 1) return [Math.min(0.1, duration / 2)];
+function sampleTimesInRange(start: number, end: number, count: number) {
+  const span = Math.max(0.2, end - start);
+  if (count <= 1) return [start + span / 2];
   return Array.from({ length: count }, (_, index) => {
-    const t = duration * ((index + 1) / (count + 1));
-    return Math.min(duration - 0.05, Math.max(0.05, t));
+    const t = start + span * ((index + 1) / (count + 1));
+    return Math.min(end - 0.05, Math.max(start + 0.05, t));
   });
 }
 

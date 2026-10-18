@@ -16,15 +16,15 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "VODCoach.AI — Multigame video coaching",
+  title: "VODCoach.AI — 試合一本とライブコーチ",
   description:
-    "Upload Apex Legends or VALORANT clips and turn aim, positioning, and ability decisions into an actionable practice plan.",
+    "Apex Legends と VALORANT のクリップや試合一本を解析し、PCでは画面共有でプレイ中のコーチングも出せます。",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html
-      lang="en"
+      lang="ja"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full bg-[#080809]">{children}</body>

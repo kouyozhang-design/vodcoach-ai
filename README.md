@@ -1,10 +1,16 @@
 # VODCoach.AI
 
-VODCoach.AI is a responsive video-coaching prototype for Apex Legends and VALORANT. Choose the game, rank, and corresponding legend or agent. A match clip is optional.
+VODCoach.AI coaches Apex Legends and VALORANT from a clip, a full match VOD, or a live PC screen share. Japanese UI. No in-game HUD overlay.
 
-Clips are uploaded **directly to Vercel Blob** from the browser so they never pass through the Hobby 4.5MB request body cap. `/api/coach` receives JSON with the Blob HTTPS URL (no video bytes, no JPEG frames). Safari never uses a file input; drop the clip instead.
+Clips are uploaded **directly to Vercel Blob** from the browser so they never pass through the Hobby 4.5MB request body cap. `/api/coach` receives JSON with the Blob HTTPS URL (no video file body). Safari never uses a file input; drop the clip instead.
 
-Live coaching uses **Gemini video understanding** (`gemini-3.8-flash`). Set `COACH_PROVIDER=gemini` and `GEMINI_API_KEY` on the server. Without a key, analysis falls back to the local mock. Do not prefix secrets with `NEXT_PUBLIC_`.
+## Coaching modes
+
+- **Short clip (about 90 seconds or less):** one Gemini video call (`gemini-3.8-flash`) on the Blob URL.
+- **Full match (longer VODs):** the client splits the timeline into ~40 second windows so each Hobby function stays under ~60 seconds. Each window sends the same Blob URL plus time offsets (and JPEG stills as backup). Results merge into one match report with more timestamped scenes — not only aim / positioning / abilities / practice.
+- **PC live:** browser `getDisplayMedia` (window or screen). About every 7 seconds the page grabs JPEGs and updates the coaching panel. There is no overlay on the game. Windowed or borderless is required so you can see this site. VALORANT Vanguard and similar anti-cheat may block capture (black frames or a hard failure); the UI says so.
+
+Live coaching uses Gemini when `COACH_PROVIDER=gemini` and `GEMINI_API_KEY` are set on the server. Without a key, analysis falls back to the local mock. Do not prefix secrets with `NEXT_PUBLIC_`.
 
 ## Run it locally
 
@@ -27,7 +33,7 @@ You need [Node.js](https://nodejs.org/) 20 or newer and npm.
 5. Open [http://localhost:3000](http://localhost:3000).
 6. Notes-only coaching works with no keys (8+ characters in the struggle field).
 7. Video coaching needs `BLOB_READ_WRITE_TOKEN` for the client upload. If it is missing, the app shows a Japanese error instead of sending the file to `/api/coach`.
-8. Real clip analysis also needs `GEMINI_API_KEY`. The server sends Gemini the Blob URL when possible, otherwise it uploads the clip through the Gemini Files API.
+8. Real clip / match / live analysis also needs `GEMINI_API_KEY`. Match windows prefer the Blob URL with time offsets and do not re-download the whole VOD through the Gemini Files API (that path is still used for short clips).
 
 ## Deploy on Vercel (Hobby / free)
 
@@ -41,9 +47,9 @@ GEMINI_API_KEY=
 BLOB_READ_WRITE_TOKEN=
 ```
 
-Leave `GEMINI_API_KEY` empty for mock notes-only. For real clip analysis, set the Blob read/write token, `COACH_PROVIDER=gemini`, and `GEMINI_API_KEY`. After adding variables, Redeploy so the function picks them up.
+Leave `GEMINI_API_KEY` empty for mock notes-only. For real analysis, set the Blob read/write token, `COACH_PROVIDER=gemini`, and `GEMINI_API_KEY`. After adding variables, Redeploy so the function picks them up.
 
-Maximum clip size is about 80MB. The coaching API body stays small (JSON + a Blob URL). Hobby functions are capped around 60 seconds.
+Maximum clip size is about 80MB. The coaching API body stays small (JSON + a Blob URL, optional JPEGs). Hobby functions are capped around 60 seconds — that is why long matches are chunked on the client.
 
 ## Commands
 
@@ -61,9 +67,14 @@ npm run start     # Run the production build
 src/
 ├── app/
 │   ├── api/blob/upload/route.ts # Client token for @vercel/blob
-│   ├── api/coach/route.ts       # JSON coaching endpoint
-│   └── page.tsx                 # Drop, preview, scan, and report UI
+│   ├── api/coach/route.ts       # JSON coaching endpoint (clip / match / live)
+│   └── page.tsx                 # VOD drop + PC live session
+├── components/
+│   ├── insight-card.tsx
+│   └── live-session.tsx         # Screen capture + live panel
 └── lib/
+    ├── match-plan.ts            # 40s windows, timestamp shift
+    ├── live-capture.ts
     ├── upload-clip.ts           # Direct Blob upload
     └── coach/
         ├── mock-provider.ts
@@ -77,12 +88,15 @@ src/
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `videoUrl` | string | Optional HTTPS URL from Vercel Blob. Gemini analyzes this video file. |
-| `frames` | array | Ignored by the live Gemini path. Kept for older clients. |
+| `mode` | string | `clip` (default), `match-chunk`, `match-merge`, `live` |
+| `videoUrl` | string | Optional HTTPS URL from Vercel Blob |
+| `startOffsetSec` / `endOffsetSec` | number | Match window on the same Blob URL |
+| `frames` | array | JPEG data URLs. Used for live and as match-window backup |
+| `chunkReports` | array | Text-only input for `match-merge` |
 | `game` | string | `apex-legends` or `valorant` |
 | `rank` | string | Must belong to the selected game |
 | `character` | string | Selected legend or agent |
-| `concern` | string | At least 8 characters when there is no clip |
+| `concern` | string | At least 8 characters when there is no clip (clip/notes mode) |
 
 `POST /api/blob/upload` is the `@vercel/blob` `handleUpload` endpoint. `GET /api/blob/upload` reports whether `BLOB_READ_WRITE_TOKEN` is set. It returns a Japanese error when the token is missing.
 

@@ -1,14 +1,20 @@
 import { NextResponse } from "next/server";
 import { getCoachProvider } from "@/lib/coach/provider";
-import type { CoachFrame, CoachRequest } from "@/lib/coach/types";
-import { requestHasClip } from "@/lib/coach/types";
+import type {
+  CoachChunkReport,
+  CoachFrame,
+  CoachMode,
+  CoachRequest,
+} from "@/lib/coach/types";
+import { requestHasClip, resolveCoachMode } from "@/lib/coach/types";
 import { gameConfigs, isGameId } from "@/lib/games";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const MAX_FRAMES = 6;
+const MAX_FRAMES = 8;
 const MAX_FRAME_CHARS = 900_000;
+const MAX_CHUNK_REPORTS = 20;
 
 type ParsedCoachBody = {
   videoUrl?: string;
@@ -17,6 +23,14 @@ type ParsedCoachBody = {
   rank: string;
   character: string;
   concern: string;
+  mode: CoachMode;
+  startOffsetSec?: number;
+  endOffsetSec?: number;
+  durationSec?: number;
+  chunkIndex?: number;
+  chunkCount?: number;
+  segmentOnly?: boolean;
+  chunkReports?: CoachChunkReport[];
 };
 
 export async function POST(request: Request) {
@@ -24,7 +38,7 @@ export async function POST(request: Request) {
     const parsed = await readCoachBody(request);
     if (parsed instanceof NextResponse) return parsed;
 
-    const { rank, character, frames, videoUrl } = parsed;
+    const { rank, character, frames, videoUrl, mode } = parsed;
     const game = parsed.game;
     const concern = parsed.concern;
     const clip = { videoUrl, frames };
@@ -39,15 +53,34 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
-    if (!requestHasClip(clip) && concern.length < 8) {
+
+    if (mode === "match-merge") {
+      if (!parsed.chunkReports || parsed.chunkReports.length === 0) {
+        return NextResponse.json({ error: "まとめる区間レポートがありません。" }, { status: 400 });
+      }
+    } else if (mode === "live") {
+      if (frames.length === 0) {
+        return NextResponse.json(
+          { error: "画面共有のフレームが届いていません。ウィンドウまたは画面を共有してください。" },
+          { status: 400 },
+        );
+      }
+    } else if (!requestHasClip(clip) && concern.length < 8) {
       return NextResponse.json(
         { error: "動画を追加するか、立ち回り・目的を8文字以上書いてください。" },
         { status: 400 },
       );
     }
 
-    const payload: CoachRequest = { game, rank, character, concern, frames };
+    const payload: CoachRequest = { game, rank, character, concern, frames, mode };
     if (videoUrl) payload.videoUrl = videoUrl;
+    if (parsed.startOffsetSec != null) payload.startOffsetSec = parsed.startOffsetSec;
+    if (parsed.endOffsetSec != null) payload.endOffsetSec = parsed.endOffsetSec;
+    if (parsed.durationSec != null) payload.durationSec = parsed.durationSec;
+    if (parsed.chunkIndex != null) payload.chunkIndex = parsed.chunkIndex;
+    if (parsed.chunkCount != null) payload.chunkCount = parsed.chunkCount;
+    if (parsed.segmentOnly) payload.segmentOnly = true;
+    if (parsed.chunkReports) payload.chunkReports = parsed.chunkReports;
 
     const result = await getCoachProvider().analyze(payload);
     return NextResponse.json(result);
@@ -82,6 +115,10 @@ async function readCoachBody(request: Request): Promise<ParsedCoachBody | NextRe
   if (frames instanceof NextResponse) return frames;
   const videoUrl = parseVideoUrl(body.videoUrl);
   if (videoUrl instanceof NextResponse) return videoUrl;
+  const chunkReports = parseChunkReports(body.chunkReports);
+  if (chunkReports instanceof NextResponse) return chunkReports;
+
+  const mode = resolveCoachMode({ mode: stringifyField(body.mode) as CoachMode });
 
   return {
     videoUrl,
@@ -90,6 +127,14 @@ async function readCoachBody(request: Request): Promise<ParsedCoachBody | NextRe
     rank: stringifyField(body.rank),
     character: stringifyField(body.character),
     concern: stringifyField(body.concern),
+    mode,
+    startOffsetSec: parseNumber(body.startOffsetSec),
+    endOffsetSec: parseNumber(body.endOffsetSec),
+    durationSec: parseNumber(body.durationSec),
+    chunkIndex: parseInteger(body.chunkIndex),
+    chunkCount: parseInteger(body.chunkCount),
+    segmentOnly: body.segmentOnly === true,
+    chunkReports,
   };
 }
 
@@ -133,6 +178,60 @@ function parseFrames(value: unknown): CoachFrame[] | NextResponse {
     frames.push({ timestamp, mimeType: "image/jpeg", dataUrl });
   }
   return frames;
+}
+
+function parseChunkReports(value: unknown): CoachChunkReport[] | undefined | NextResponse {
+  if (value == null) return undefined;
+  if (!Array.isArray(value)) {
+    return NextResponse.json({ error: "区間レポートの形式が正しくありません。" }, { status: 400 });
+  }
+  if (value.length > MAX_CHUNK_REPORTS) {
+    return NextResponse.json({ error: "区間レポートが多すぎます。" }, { status: 400 });
+  }
+  const reports: CoachChunkReport[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object") {
+      return NextResponse.json({ error: "区間レポートの形式が正しくありません。" }, { status: 400 });
+    }
+    const row = entry as Record<string, unknown>;
+    const insights = Array.isArray(row.insights)
+      ? row.insights.flatMap((item) => {
+          if (!item || typeof item !== "object") return [];
+          const insight = item as Record<string, unknown>;
+          return [
+            {
+              id: stringifyField(insight.id) || "scene",
+              timestamp: stringifyField(insight.timestamp) || undefined,
+              title: stringifyField(insight.title),
+              finding: stringifyField(insight.finding),
+              action: stringifyField(insight.action),
+            },
+          ];
+        })
+      : [];
+    reports.push({
+      headline: stringifyField(row.headline) || undefined,
+      summary: stringifyField(row.summary) || undefined,
+      insights,
+      startOffsetSec: parseNumber(row.startOffsetSec),
+      endOffsetSec: parseNumber(row.endOffsetSec),
+    });
+  }
+  return reports;
+}
+
+function parseNumber(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
+function parseInteger(value: unknown): number | undefined {
+  const parsed = parseNumber(value);
+  return parsed == null ? undefined : Math.trunc(parsed);
 }
 
 function stringifyField(value: unknown): string {
