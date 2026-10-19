@@ -18,17 +18,24 @@ export async function uploadClipToBlob(file: File): Promise<string> {
 
   const clip = normalizeCoachVideo(file);
   const pathname = `coach-clips/${safeName(clip.name)}`;
+  const mintedAt = Date.now();
+  // Never pass clientToken — each upload must mint a fresh handleUpload JWT.
   const blob = await upload(pathname, clip, {
     access: "public",
-    handleUploadUrl: "/api/blob/upload",
+    handleUploadUrl: `/api/blob/upload?n=${mintedAt}`,
     multipart: true,
+    clientPayload: String(mintedAt),
   });
   return blob.url;
 }
 
 async function readBlobStatus(): Promise<BlobStatus> {
   try {
-    const response = await fetch("/api/blob/upload", { method: "GET" });
+    const response = await fetch(`/api/blob/upload?n=${Date.now()}`, {
+      method: "GET",
+      cache: "no-store",
+      headers: { "Cache-Control": "no-store" },
+    });
     const payload = (await response.json()) as BlobStatus & { error?: string };
     if (!response.ok) {
       return { configured: false, error: payload.error || BLOB_TOKEN_MISSING };
