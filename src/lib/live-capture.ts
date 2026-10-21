@@ -1,6 +1,6 @@
 "use client";
 
-export const LIVE_INTERVAL_MS = 5000;
+export { LIVE_INTERVAL_MS } from "./live-timing";
 export const LIVE_JPEG_QUALITY = 0.52;
 export const LIVE_MAX_WIDTH = 960;
 

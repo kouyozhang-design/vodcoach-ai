@@ -8,7 +8,9 @@ Clips are uploaded **directly to Vercel Blob** from the browser so they never pa
 
 - **Short clip (about 90 seconds or less):** one Gemini video call (`gemini-3.8-flash`) on the Blob URL.
 - **Full match (longer VODs):** the client splits the timeline into ~40 second windows so each Hobby function stays under ~60 seconds, then runs up to 3 Gemini calls in parallel on the same Blob URL plus time offsets. Each `/api/coach` call has a ~52s client timeout (under Hobby 60s) and leftover requests abort on error or unmount. The UI shows `解析中 N / total`. A long match is not aborted at 5 minutes while N is still increasing; the client errors only if no chunk or merge step completes for ~80 seconds. JPEG stills are only extracted if that Blob URL path fails. Results merge into one match report with more timestamped scenes — not only aim / positioning / abilities / practice.
-- **PC live:** browser `getDisplayMedia` (window or screen). About every 5 seconds the page grabs JPEGs and updates the coaching panel. There is no overlay on the game. Windowed or borderless is required so you can see this site. VALORANT Vanguard and similar anti-cheat may block capture (black frames or a hard failure); the UI says so.
+- **PC live:** browser `getDisplayMedia` (window or screen). The page samples the screen often (about every 2.5 seconds), but the panel updates only when the model sets `shouldSpeak` on a real cue. Otherwise it stays on 注視中 and repeats are dropped. There is no overlay on the game. Windowed or borderless is required so you can see this site. VALORANT Vanguard and similar anti-cheat may block capture (black frames or a hard failure); the UI says so.
+
+Notes, clip, match-chunk, match-merge, and live share one coaching bar: process and expected value over outcome, personalized to game / rank / character / concern plus on-screen evidence, no generic slogans. Match chunks may return zero timestamped tips.
 
 Live coaching uses Gemini when `COACH_PROVIDER=gemini` and `GEMINI_API_KEY` are set on the server. Without a key, analysis falls back to the local mock. Do not prefix secrets with `NEXT_PUBLIC_`.
 
@@ -78,6 +80,9 @@ src/
     ├── live-capture.ts
     ├── upload-clip.ts           # Direct Blob upload
     └── coach/
+        ├── bar.ts               # shared pro-team / EV bar
+        ├── prompts.ts           # notes/clip/chunk/merge/live prompts
+        ├── live-cues.ts         # shouldSpeak + repeat dedupe
         ├── mock-provider.ts
         ├── gemini-provider.ts   # gemini-3.8-flash when GEMINI_API_KEY is set
         └── types.ts
@@ -98,6 +103,7 @@ src/
 | `rank` | string | Must belong to the selected game |
 | `character` | string | Selected legend or agent |
 | `concern` | string | At least 8 characters when there is no clip (clip/notes mode) |
+| `recentCues` | string[] | Optional. Last live cues, so the model can skip repeats |
 
 `POST /api/blob/upload` is the `@vercel/blob` `handleUpload` endpoint. `GET /api/blob/upload` reports whether `BLOB_READ_WRITE_TOKEN` is set. It returns a Japanese error when the token is missing.
 

@@ -452,7 +452,7 @@ export default function Home() {
             試合一本も、プレイ中も、<span className="inline-block bg-gradient-to-r from-red-300 via-red-500 to-orange-400 bg-clip-text text-transparent">映像から改善。</span>
           </h1>
           <p className="mt-4 max-w-2xl text-sm leading-6 text-zinc-500">
-            Apex LegendsとVALORANT。短いクリップはそのまま解析し、長い試合は時間分割してタイムスタンプ付きの一本レポートにまとめます。PCでは画面共有でライブ指摘も出せます。
+            Apex LegendsとVALORANT。短いクリップ・試合一本・ライブは同じ基準です。見えていた情報と期待値で判断し、本当に指摘すべき局面だけ残します。PCでは画面共有でライブ指摘も出せます。
           </p>
           <div className="mt-6 inline-flex rounded-full border border-white/[0.08] bg-white/[0.03] p-1">
             <button
@@ -610,11 +610,17 @@ export default function Home() {
                 </div>
                 <div className="p-5 sm:p-6">
                   <p className="text-sm leading-6 text-zinc-300">{result.summary}</p>
-                  <div className={`mt-6 grid gap-3 ${result.insights.length > 4 ? "sm:grid-cols-2" : "sm:grid-cols-2"}`}>
-                    {result.insights.map((insight, index) => (
-                      <InsightCard key={`${insight.id}-${index}`} insight={insight} index={index} instant={insightInstant} />
-                    ))}
-                  </div>
+                  {result.insights.length === 0 ? (
+                    <p className="mt-6 text-sm leading-6 text-zinc-500">
+                      この解析から、今の悩みに対して指摘すべき局面はありませんでした。勝敗やキルだけの区間は残していません。
+                    </p>
+                  ) : (
+                    <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                      {result.insights.map((insight, index) => (
+                        <InsightCard key={`${insight.id}-${index}`} insight={insight} index={index} instant={insightInstant} />
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             )}

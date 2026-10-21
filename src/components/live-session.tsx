@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { InsightCard } from "@/components/insight-card";
 import { requestCoach } from "@/lib/coach/client";
+import { decideLiveCue, recentCueLabels, rememberCues } from "@/lib/coach/live-cues";
 import type { CoachFrame, CoachResponse } from "@/lib/coach/types";
 import {
   LIVE_INTERVAL_MS,
@@ -42,6 +43,7 @@ export function LiveSession({
   const [error, setError] = useState("");
   const [warning, setWarning] = useState("");
   const [result, setResult] = useState<CoachResponse | null>(null);
+  const [watching, setWatching] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [tick, setTick] = useState(0);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -50,6 +52,8 @@ export function LiveSession({
   const cancelled = useRef(false);
   const coachAbort = useRef<AbortController | null>(null);
   const blackStreak = useRef(0);
+  const recentPrints = useRef<string[]>([]);
+  const recentLabels = useRef<string[]>([]);
   const configRef = useRef({ game, rank, character, concern });
   const captureOk = useSyncExternalStore(() => () => undefined, canCaptureDisplay, () => false);
   configRef.current = { game, rank, character, concern };
@@ -74,6 +78,9 @@ export function LiveSession({
     setError("");
     setWarning("");
     setResult(null);
+    setWatching(false);
+    recentPrints.current = [];
+    recentLabels.current = [];
     if (!captureOk) {
       setError("このブラウザでは画面共有が使えません。PCの Chrome または Edge で開いてください。スマホではライブコーチは使えません。");
       setStatus("error");
@@ -129,11 +136,11 @@ export function LiveSession({
 
     const first = grabJpegFrame(video);
     if (!first) return;
-    await new Promise((resolve) => window.setTimeout(resolve, 700));
+    await new Promise((resolve) => window.setTimeout(resolve, 420));
     const second = grabJpegFrame(video) ?? first;
     const frames: CoachFrame[] = [
       { timestamp: Date.now() / 1000, mimeType: "image/jpeg", dataUrl: first },
-      { timestamp: Date.now() / 1000 + 0.7, mimeType: "image/jpeg", dataUrl: second },
+      { timestamp: Date.now() / 1000 + 0.42, mimeType: "image/jpeg", dataUrl: second },
     ];
 
     inFlight.current = true;
@@ -151,12 +158,21 @@ export function LiveSession({
           concern: input.concern.trim() || `${input.rank}の${input.character}として今の画面の次の動きを教えてください`,
           frames,
           mode: "live",
+          recentCues: recentLabels.current,
         },
         { signal: run.signal },
       );
       if (!cancelled.current) {
-        setResult(payload);
-        setTick((value) => value + 1);
+        const decision = decideLiveCue(payload, recentPrints.current);
+        if (decision.speak) {
+          recentPrints.current = rememberCues(recentPrints.current, payload.insights);
+          recentLabels.current = recentCueLabels(payload.insights);
+          setResult(payload);
+          setWatching(false);
+          setTick((value) => value + 1);
+        } else {
+          setWatching(true);
+        }
         setError("");
       }
     } catch (reason) {
@@ -255,13 +271,13 @@ export function LiveSession({
           </div>
           <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[9px] text-zinc-700">
             <Shield className="size-3 shrink-0" />
-            共有映像は数秒ごとにJPEGとして解析APIへ送ります。キーはブラウザに出しません。
+            画面は高頻度でJPEGとして送ります。話すのは本当に指摘すべき局面だけです。キーはブラウザに出しません。
           </p>
         </div>
       </Card>
 
       <Card className="min-h-[520px] overflow-hidden border-white/[0.08] bg-[#0e0e10]/95 p-0 text-white shadow-2xl shadow-black/40 sm:min-h-[620px]">
-        {!result && status !== "coaching" && (
+        {!sharing && !result && (
           <div className="flex min-h-[520px] flex-col items-center justify-center px-6 py-10 text-center sm:min-h-[620px] sm:px-8">
             <div className="relative">
               <div className="absolute -inset-7 rounded-full bg-red-500/10 blur-2xl" />
@@ -274,17 +290,21 @@ export function LiveSession({
             </p>
             <p className="mt-2 max-w-sm text-xs leading-5 text-zinc-600">
               {captureOk
-                ? "画面共有を開始すると、約5秒ごとに今の画面を読んで指摘を差し替えます。ゲームの上にはオーバーレイを出しません。"
+                ? "画面は高頻度で読みます。話すのは本当に指摘すべき局面だけです。それ以外はこのパネルが「注視中」のままです。ゲームの上にはオーバーレイを出しません。"
                 : "PCの Chrome / Edge で開いてください。iPhone / iPad と多くのモバイルブラウザでは getDisplayMedia が使えません。"}
             </p>
           </div>
         )}
 
-        {status === "coaching" && !result && (
+        {sharing && !result && (
           <div className="flex min-h-[520px] flex-col items-center justify-center px-6 text-center sm:min-h-[620px]">
-            <Radio className="size-8 animate-pulse text-red-400" />
-            <p className="mt-6 text-lg font-semibold">画面を読んでいます</p>
-            <p className="mt-2 text-xs text-zinc-600">最初のコーチングを生成しています。</p>
+            <Radio className={`size-8 text-red-400 ${status === "coaching" ? "animate-pulse" : ""}`} />
+            <p className="mt-6 text-lg font-semibold">注視中</p>
+            <p className="mt-2 max-w-sm text-xs leading-5 text-zinc-600">
+              {status === "coaching"
+                ? "画面を読んでいます。勝敗やキルだけでは話しません。"
+                : "局面を待っています。指摘すべき判断があるときだけこのパネルを更新します。"}
+            </p>
           </div>
         )}
 
@@ -293,13 +313,21 @@ export function LiveSession({
             <div className="flex items-center justify-between border-b border-white/[0.06] px-5 py-4 sm:px-6">
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="size-1.5 animate-pulse rounded-full bg-emerald-400" />
+                  <span className={`size-1.5 rounded-full ${watching ? "bg-zinc-500" : "animate-pulse bg-emerald-400"}`} />
                   <p className="text-sm font-semibold">{result.headline}</p>
                 </div>
-                <p className="mt-1 pl-3.5 font-mono text-[9px] text-zinc-700">LIVE · tick {tick}</p>
+                <p className="mt-1 pl-3.5 font-mono text-[9px] text-zinc-700">
+                  {watching ? "WATCHING" : "LIVE"} · tick {tick}
+                </p>
               </div>
-              <Badge className="border border-emerald-500/15 bg-emerald-500/10 text-[9px] text-emerald-400">
-                {status === "coaching" ? "UPDATING" : "LIVE"}
+              <Badge
+                className={
+                  watching
+                    ? "border border-white/10 bg-white/[0.04] text-[9px] text-zinc-400"
+                    : "border border-emerald-500/15 bg-emerald-500/10 text-[9px] text-emerald-400"
+                }
+              >
+                {status === "coaching" ? "READING" : watching ? "注視中" : "LIVE"}
               </Badge>
             </div>
             <div className="p-5 sm:p-6">

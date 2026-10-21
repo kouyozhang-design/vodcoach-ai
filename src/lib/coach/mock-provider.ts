@@ -1,6 +1,6 @@
-import { formatTimestamp, shiftTimestamp } from "@/lib/match-plan";
-import type { CoachInsight, CoachRequest, CoachResponse, VideoCoachProvider } from "./types";
-import { requestHasClip, resolveCoachMode } from "./types";
+import { formatTimestamp, shiftTimestamp } from "../match-plan.ts";
+import type { CoachInsight, CoachRequest, CoachResponse, VideoCoachProvider } from "./types.ts";
+import { requestHasClip, resolveCoachMode } from "./types.ts";
 
 class MockVideoCoachProvider implements VideoCoachProvider {
   async analyze(input: CoachRequest): Promise<CoachResponse> {
@@ -52,17 +52,37 @@ function buildMatchChunkResponse(input: CoachRequest): CoachResponse {
   const end = input.endOffsetSec ?? start + 40;
   const isApex = input.game === "apex-legends";
   const mid = (start + end) / 2;
+  const quiet = typeof input.chunkIndex === "number" && input.chunkIndex % 3 === 1;
+  if (quiet) {
+    return {
+      analysisId: crypto.randomUUID(),
+      game: input.game,
+      character: input.character,
+      kind: "match",
+      headline: `${input.character} 区間 ${formatTimestamp(start)}–${formatTimestamp(end)}`,
+      summary: `${input.rank}の${input.character}。この時間帯は回転または情報待ちで、指摘すべき局面はありません。`,
+      insights: [],
+      durationSec: input.durationSec,
+      chunk: {
+        startOffsetSec: start,
+        endOffsetSec: end,
+        index: input.chunkIndex,
+        count: input.chunkCount,
+      },
+    };
+  }
+  const concern = input.concern.trim() || `${input.rank}の${input.character}の判断`;
   const insights: CoachInsight[] = [
     {
       id: "fight-open",
       timestamp: shiftTimestamp(formatTimestamp(start + 4), start, end),
       title: isApex ? "遮蔽を離れて最初の射線を2本開いている" : "チョーク前にクロスヘアがヘッドから落ちる",
       finding: isApex
-        ? `${formatTimestamp(start + 4)}付近、${input.character}が岩から離れた瞬間に左右から撃たれています。`
-        : `${formatTimestamp(start + 4)}付近、${input.character}のクロスヘアが壁のヘッドラインを外したままスイングしています。`,
+        ? `${formatTimestamp(start + 4)}、${input.rank}の${input.character}が岩から離れた瞬間に左右2射線が開いている。悩み「${concern}」は、見えていた人数を1人に削る前に出た判断。`
+        : `${formatTimestamp(start + 4)}、${input.rank}の${input.character}のクロスヘアが壁のヘッドラインを外したままスイング。悩み「${concern}」は、止まる前に2アングルを開いた期待値の負け。`,
       action: isApex
-        ? "出る前に岩の左端へ張り直し、見える敵を1人に減らしてからスライドする。"
-        : "壁のヘッドラインを目で固定してから、2歩だけスイングして止まる。",
+        ? "出る前に岩の左端へ張り、見える敵を1人に減らしてからスライドする。死んだことではなく、2射線を同時に開いた選択を直す。"
+        : "壁のヘッドラインを目で固定してから、2歩だけスイングして止まる。キル結果ではなく開いたアングル数で評価する。",
     },
     {
       id: "trade",
@@ -97,7 +117,7 @@ function buildMatchChunkResponse(input: CoachRequest): CoachResponse {
     character: input.character,
     kind: "match",
     headline: `${input.character} 区間 ${formatTimestamp(start)}–${formatTimestamp(end)}`,
-    summary: `${input.rank} ${input.character}のこの時間帯から、撃ち合い・位置・スキルの具体的な場面を拾いました。`,
+    summary: `${input.rank}の${input.character}。この時間帯から、見えていた情報で期待値を落とした局面だけを残しました。`,
     insights,
     durationSec: input.durationSec,
     chunk: {
@@ -122,18 +142,18 @@ function buildMergeResponse(input: CoachRequest): CoachResponse {
     }
     if (insights.length >= 16) break;
   }
-  if (insights.length === 0) {
-    insights.push(...buildMatchChunkResponse({ ...input, startOffsetSec: 0, endOffsetSec: 40 }).insights);
-  }
   return {
     analysisId: crypto.randomUUID(),
     game: input.game,
     character: input.character,
     kind: "match",
     headline: `${input.character} 試合一本診断 · ${input.rank}`,
-    summary: `${input.rank}の${input.character}について、試合を時間分割して解析し、タイムスタンプ付きの指摘を1つのレポートにまとめました。${
-      input.durationSec ? `対象の長さは約 ${formatTimestamp(input.durationSec)} です。` : ""
-    }`,
+    summary:
+      insights.length === 0
+        ? `${input.rank}の${input.character}。分割した区間に指摘すべき局面はありませんでした。枠は埋めていません。`
+        : `${input.rank}の${input.character}について、過程と期待値で見たタイムスタンプ付きの指摘だけを1つのレポートにまとめました。${
+            input.durationSec ? `対象の長さは約 ${formatTimestamp(input.durationSec)} です。` : ""
+          }`,
     insights,
     durationSec: input.durationSec,
   };
@@ -142,24 +162,32 @@ function buildMergeResponse(input: CoachRequest): CoachResponse {
 function buildLiveResponse(input: CoachRequest): CoachResponse {
   const isApex = input.game === "apex-legends";
   const black = (input.frames?.length ?? 0) === 0;
+  const concern = input.concern.trim() || `${input.rank}の${input.character}の今の判断`;
   if (black) {
     return {
       analysisId: crypto.randomUUID(),
       game: input.game,
       character: input.character,
       kind: "live",
-      headline: "画面を待っています",
+      shouldSpeak: false,
+      skipReason: "フレームなし",
+      headline: "注視中",
       summary:
         "共有フレームが届いていません。ゲームウィンドウを選び、チート対策で黒画面になっていないか確認してください。",
-      insights: [
-        {
-          id: "wait",
-          timestamp: "now",
-          title: "キャプチャ待ち",
-          finding: "ライブコーチはブラウザの画面共有に依存します。ゲーム内HUDへは何も重ねません。",
-          action: "ボーダーレスまたはウィンドウ表示にして、ゲームの画面を共有し直してください。",
-        },
-      ],
+      insights: [],
+    };
+  }
+  if ((input.recentCues?.length ?? 0) > 0) {
+    return {
+      analysisId: crypto.randomUUID(),
+      game: input.game,
+      character: input.character,
+      kind: "live",
+      shouldSpeak: false,
+      skipReason: "同じ局面の繰り返し",
+      headline: `${input.character} 注視中 · ${input.rank}`,
+      summary: `${input.rank}の${input.character}。直近と同じ判断局面なので話しません。`,
+      insights: [],
     };
   }
   return {
@@ -167,37 +195,22 @@ function buildLiveResponse(input: CoachRequest): CoachResponse {
     game: input.game,
     character: input.character,
     kind: "live",
+    shouldSpeak: true,
     headline: `${input.character} ライブ · ${input.rank}`,
     summary: isApex
-      ? "今の画面では射線が広がりすぎています。次の数秒は遮蔽に戻してから1人だけ見てください。"
-      : "今の画面では2アングルが同時に開いています。壁に戻してから1ラインだけ切ってください。",
+      ? `${input.rank}の${input.character}。今見えている射線が2本以上あるので、遮蔽に戻す方が期待値が高い。悩み「${concern}」。`
+      : `${input.rank}の${input.character}。今見えているアングルが2本同時に開いているので、壁に戻す方が期待値が高い。悩み「${concern}」。`,
     insights: [
       {
         id: "now-peek",
         timestamp: "now",
-        title: isApex ? "今すぐ岩の左端へ戻る" : "今すぐオフアングルへ戻る",
+        title: isApex ? "岩の左端へ戻して射線を1本にする" : "壁へ戻して1アングルだけ切る",
         finding: isApex
-          ? `${input.character}のレティクルがオープンを向いたまま、味方がトレードできない位置にいます。`
-          : `${input.character}のクロスヘアが広いスイングの途中で、heaven側が残っています。`,
+          ? `${input.character}のレティクルがオープンを向いたまま、味方のトレード射程の外にいる。見えている人数が2なら今は切る。`
+          : `${input.character}のクロスヘアが広いスイングの途中で heaven が残っている。見えている情報では1ラインだけ切る方が高い。`,
         action: isApex
-          ? "スライドを止めて岩に張り、見える敵が1人になってから腰撃ち。"
-          : "2歩下がって壁でheavenを隠し、止まって2発だけ撃つ。",
-      },
-      {
-        id: "now-util",
-        timestamp: "now",
-        title: "スキルを先に置く",
-        finding: `${input.character}のスキルが見えていません。このランクでは先に置いた側が勝ちます。`,
-        action: isApex
-          ? "次の移動の前にタクティカル。アルティメットはチームがコミットしてから。"
-          : "次のピークの前にシグネチャー。サイトを取る窓でのみアルティメット。",
-      },
-      {
-        id: "now-info",
-        timestamp: "now",
-        title: "情報を数えてから出る",
-        finding: "ミニマップと音を待たず、同じ角度を開き直そうとしています。",
-        action: "1秒止まって足音と人数を数えてから、別の角度で出す。",
+          ? "スライドを止めて岩に張り、見える敵が1人になってから腰撃ち。死んだら責めるのではなく、開いた射線数を直す。"
+          : "2歩下がって壁でheavenを隠し、止まって2発だけ撃つ。キル結果ではなく開いたアングル数で評価する。",
       },
     ],
   };

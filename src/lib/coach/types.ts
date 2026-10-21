@@ -35,6 +35,7 @@ export type CoachRequest = {
   chunkCount?: number;
   segmentOnly?: boolean;
   chunkReports?: CoachChunkReport[];
+  recentCues?: string[];
 };
 
 export type CoachChunkReport = {
@@ -56,6 +57,8 @@ export type CoachResponse = {
   durationSec?: number;
   chunk?: { startOffsetSec: number; endOffsetSec: number; index?: number; count?: number };
   truncated?: boolean;
+  shouldSpeak?: boolean;
+  skipReason?: string;
 };
 
 export interface VideoCoachProvider {

@@ -1,8 +1,9 @@
 import { formatTimestamp, shiftTimestamp } from "@/lib/match-plan";
 import { mimeFromFileName } from "@/lib/video";
+import { looksLikeSlogan } from "./bar";
+import { buildUserText, systemPrompt } from "./prompts";
 import {
   CLIP_INSIGHT_IDS,
-  requestHasClip,
   resolveCoachMode,
   type CoachInsight,
   type CoachMode,
@@ -147,7 +148,7 @@ async function generateCoachJson(apiKey: string, parts: GeminiPart[], mode: Coac
     system_instruction: { parts: [{ text: systemPrompt(mode) }] },
     contents: [{ role: "user", parts }],
     generationConfig: {
-      temperature: mode === "live" ? 0.3 : 0.4,
+      temperature: mode === "live" ? 0.25 : 0.35,
       responseMimeType: "application/json",
       responseSchema: schemaFor(mode),
     },
@@ -312,37 +313,6 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function systemPrompt(mode: CoachMode) {
-  if (mode === "live") {
-    return `あなたはFPSのライブコーチです。日本語で指定JSONだけを返します。
-今見えているゲーム画面（共有フレーム）だけを根拠に、直後の動きを短く指示します。
-insights は2〜4件。id は自由（fight, peek, util, rotate など）。timestamp は "now" か経過 mm:ss。
-ゲーム内HUDへ重ねる前提の指示は書かない。画面が黒・メニュー・非ゲームならその旨を summary に書く。
-JSON形状:
-{"headline":string,"summary":string,"insights":[{"id":string,"timestamp":string,"title":string,"finding":string,"action":string}]}`;
-  }
-  if (mode === "match-chunk") {
-    return `あなたはFPSの試合VODコーチです。日本語で指定JSONだけを返します。
-渡された時間帯だけを見て、具体的な場面を4〜8件出します。aim / positioning / abilities / practice の4枠に縛らない。
-timestamp は試合全体の mm:ss（チャンク先頭からの相対ではなく絶対時間）。
-JPEGは補助。動画セグメントがあるときは動画を優先。
-JSON形状:
-{"headline":string,"summary":string,"insights":[{"id":string,"timestamp":string,"title":string,"finding":string,"action":string}]}`;
-  }
-  if (mode === "match-merge") {
-    return `あなたはFPSの試合レポート編集者です。日本語で指定JSONだけを返します。
-区間レポートを1本の試合レポートにまとめます。重複は削り、タイムスタンプ付きの具体的な場面を8〜16件残します。
-4枠（aim/positioning/abilities/practice）に圧縮しない。timestamp は mm:ss のまま。
-JSON形状:
-{"headline":string,"summary":string,"insights":[{"id":string,"timestamp":string,"title":string,"finding":string,"action":string}]}`;
-  }
-  return `あなたはFPSの動画コーチです。日本語で、指定JSONだけを返します。
-insights は必ず4件で id は aim, positioning, abilities, practice の順。
-各 insight は title / finding / action を具体的に。クリップ動画があるときは映像の時間帯に触れる。
-JPEGの静止画フレームではなく、渡された動画そのものを見てください。
-JSON形状:
-{"headline":string,"summary":string,"insights":[{"id":"aim"|"positioning"|"abilities"|"practice","timestamp":string,"title":string,"finding":string,"action":string}]}`;
-}
 
 function schemaFor(mode: CoachMode) {
   const insightProperties =
@@ -361,89 +331,34 @@ function schemaFor(mode: CoachMode) {
           finding: { type: "STRING" },
           action: { type: "STRING" },
         };
-  return {
-    type: "OBJECT",
-    properties: {
-      headline: { type: "STRING" },
-      summary: { type: "STRING" },
-      insights: {
-        type: "ARRAY",
-        items: {
-          type: "OBJECT",
-          properties: insightProperties,
-          required: ["id", "title", "finding", "action"],
-        },
+  const properties: Record<string, unknown> = {
+    headline: { type: "STRING" },
+    summary: { type: "STRING" },
+    insights: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: insightProperties,
+        required: ["id", "title", "finding", "action"],
       },
     },
-    required: ["headline", "summary", "insights"],
   };
-}
-
-function buildUserText(input: CoachRequest, mode: CoachMode, hasVideo: boolean, hasFrames: boolean) {
-  const lines = [
-    `ゲーム: ${input.game}`,
-    `ランク: ${input.rank}`,
-    `キャラクター: ${input.character}`,
-    `悩み・目的: ${input.concern || "（未記入。ランクとキャラから推測）"}`,
-  ];
-
+  const required = ["headline", "summary", "insights"];
   if (mode === "live") {
-    lines.push("ライブ画面共有のフレームです。今この瞬間のコーチングを返してください。ゲーム内オーバーレイは使いません。");
-    if (hasFrames) lines.push(`静止画 ${input.frames?.length ?? 0} 枚を添付しています。`);
-    return lines.join("\n");
+    properties.shouldSpeak = { type: "BOOLEAN" };
+    properties.skipReason = { type: "STRING" };
+    required.push("shouldSpeak");
   }
-
-  if (mode === "match-merge") {
-    const reports = input.chunkReports ?? [];
-    lines.push("以下は試合を時間分割して解析した区間レポートです。1本の試合レポートに統合してください。");
-    if (input.durationSec) lines.push(`試合の長さ: ${formatTimestamp(input.durationSec)}`);
-    reports.forEach((report, index) => {
-      const start = report.startOffsetSec ?? 0;
-      const end = report.endOffsetSec ?? start;
-      lines.push(`--- 区間 ${index + 1} ${formatTimestamp(start)}–${formatTimestamp(end)} ---`);
-      if (report.headline) lines.push(`見出し: ${report.headline}`);
-      if (report.summary) lines.push(`要約: ${report.summary}`);
-      for (const insight of report.insights ?? []) {
-        lines.push(
-          `- [${insight.timestamp || "?"}] ${insight.title}: ${insight.finding} / 行動: ${insight.action}`,
-        );
-      }
-    });
-    return lines.join("\n");
-  }
-
-  if (mode === "match-chunk") {
-    const start = input.startOffsetSec ?? 0;
-    const end = input.endOffsetSec ?? start;
-    lines.push(
-      `試合VODの区間 ${formatTimestamp(start)}–${formatTimestamp(end)} です。timestamp はこの試合時刻で書いてください。`,
-    );
-    if (typeof input.chunkIndex === "number" && typeof input.chunkCount === "number") {
-      lines.push(`区間 ${input.chunkIndex + 1}/${input.chunkCount}`);
-    }
-    if (input.durationSec) lines.push(`試合全体の長さ: ${formatTimestamp(input.durationSec)}`);
-    if (hasVideo) lines.push("クリップはクラウド上のHTTPS URLです。指定オフセットの動画を優先してください。");
-    if (hasFrames) lines.push("同じ区間のJPEGを補助として添付しています。");
-    return lines.join("\n");
-  }
-
-  lines.push(
-    hasVideo
-      ? "クリップ動画を添付しています。動画ファイルそのものを見てコーチングしてください。"
-      : "動画なし。ノートコーチングです。",
-  );
-  if (input.videoUrl && hasVideo) {
-    lines.push("クリップはクラウド上のHTTPS URLから参照しています。");
-  }
-  if (!hasVideo && requestHasClip(input)) {
-    lines.push("静止画フレームは使わず、ノート情報だけでコーチングしてください。");
-  }
-  return lines.join("\n");
+  return {
+    type: "OBJECT",
+    properties,
+    required,
+  };
 }
 
 function toCoachResponse(parsed: Record<string, unknown>, input: CoachRequest, mode: CoachMode): CoachResponse {
   const insights =
-    mode === "clip" ? toClipInsights(parsed) : toFreeInsights(parsed, input, mode);
+    mode === "clip" ? toClipInsights(parsed, input) : toFreeInsights(parsed, input, mode);
 
   const hasVideo = Boolean(input.videoUrl);
   const kind =
@@ -460,10 +375,19 @@ function toCoachResponse(parsed: Record<string, unknown>, input: CoachRequest, m
     game: input.game,
     character: input.character,
     headline: stringify(parsed.headline) || fallbackHeadline(input, kind),
-    summary: stringify(parsed.summary) || fallbackSummary(input, kind),
+    summary: stringify(parsed.summary) || fallbackSummary(input, kind, insights.length),
     insights,
     kind,
   };
+  if (mode === "live") {
+    const explicitSkip = parsed.shouldSpeak === false;
+    response.shouldSpeak = !explicitSkip && insights.length > 0;
+    const skipReason = stringify(parsed.skipReason);
+    if (!response.shouldSpeak) {
+      response.skipReason = skipReason || (insights.length === 0 ? "指摘すべき局面なし" : "繰り返し");
+      response.insights = [];
+    }
+  }
   if (typeof input.durationSec === "number" && Number.isFinite(input.durationSec)) {
     response.durationSec = input.durationSec;
   }
@@ -478,16 +402,19 @@ function toCoachResponse(parsed: Record<string, unknown>, input: CoachRequest, m
   return response;
 }
 
-function toClipInsights(parsed: Record<string, unknown>): CoachInsight[] {
+function toClipInsights(parsed: Record<string, unknown>, input: CoachRequest): CoachInsight[] {
   const insightsRaw = Array.isArray(parsed.insights) ? parsed.insights : [];
+  const who = `${input.rank}の${input.character}`;
   return CLIP_INSIGHT_IDS.map((id, index) => {
     const row = (insightsRaw[index] ?? findInsight(insightsRaw, id) ?? {}) as Record<string, unknown>;
+    const finding = stringify(row.finding);
+    const action = stringify(row.action);
     return {
       id,
       timestamp: stringify(row.timestamp) || undefined,
       title: stringify(row.title) || fallbackTitle(id),
-      finding: stringify(row.finding) || "この項目の具体的な観察は得られませんでした。",
-      action: stringify(row.action) || "次の試合で一つだけ意識して繰り返してください。",
+      finding: finding || `${who}のこの項目について、今の悩みと画面の根拠から具体的な判断を切り出せませんでした。`,
+      action: action || `${who}の次の試合で、見えていた情報（人数・射程・スキル）から1つだけ高期待値の選択を繰り返す。`,
     };
   });
 }
@@ -496,7 +423,7 @@ function toFreeInsights(parsed: Record<string, unknown>, input: CoachRequest, mo
   const insightsRaw = Array.isArray(parsed.insights) ? parsed.insights : [];
   const start = input.startOffsetSec ?? 0;
   const end = input.endOffsetSec ?? start;
-  const max = mode === "live" ? 4 : mode === "match-merge" ? 16 : 8;
+  const max = mode === "live" ? 2 : mode === "match-merge" ? 16 : 6;
   const insights: CoachInsight[] = [];
   for (let index = 0; index < insightsRaw.length && insights.length < max; index += 1) {
     const row = insightsRaw[index];
@@ -506,24 +433,16 @@ function toFreeInsights(parsed: Record<string, unknown>, input: CoachRequest, mo
     const finding = stringify(record.finding);
     const action = stringify(record.action);
     if (!title && !finding) continue;
+    if (looksLikeSlogan(`${title}${finding}${action}`)) continue;
     let timestamp = stringify(record.timestamp) || undefined;
     if (mode === "match-chunk") timestamp = shiftTimestamp(timestamp, start, end);
     if (mode === "live" && !timestamp) timestamp = "now";
     insights.push({
       id: stringify(record.id) || `scene-${index + 1}`,
       timestamp,
-      title: title || `場面 ${index + 1}`,
-      finding: finding || "この場面の具体的な観察は得られませんでした。",
-      action: action || "次の数秒で一つだけ修正してください。",
-    });
-  }
-  if (insights.length === 0) {
-    insights.push({
-      id: "observe",
-      timestamp: mode === "live" ? "now" : formatTimestamp(start),
-      title: "観察不足",
-      finding: "この区間から具体的な指摘を組み立てられませんでした。",
-      action: "同じ区間をもう一度送るか、撃ち合いが入ったクリップで再解析してください。",
+      title: title || `局面 ${index + 1}`,
+      finding: finding || `${input.rank}の${input.character}について、この局面の根拠が足りません。`,
+      action: action || "見えていた人数と射程から、取る／切るを1つ選ぶ。",
     });
   }
   return insights;
@@ -553,10 +472,19 @@ function fallbackHeadline(input: CoachRequest, kind: CoachResponse["kind"]) {
   return `${input.character} コーチング · ${input.rank}`;
 }
 
-function fallbackSummary(input: CoachRequest, kind: CoachResponse["kind"]) {
-  if (kind === "live") return `${input.rank}の${input.character}向けに、今の画面から次の動きを出します。`;
-  if (kind === "match") return `${input.rank}の${input.character}の試合から、タイムスタンプ付きの指摘をまとめました。`;
-  return `${input.rank}の${input.character}向けの改善ポイントです。`;
+function fallbackSummary(input: CoachRequest, kind: CoachResponse["kind"], insightCount = 0) {
+  const who = `${input.rank}の${input.character}`;
+  if (kind === "live") {
+    return insightCount > 0
+      ? `${who}向けに、今の画面の根拠から次の1手を出します。`
+      : `${who}の画面を注視中。指摘すべき局面だけ話します。`;
+  }
+  if (kind === "match") {
+    return insightCount > 0
+      ? `${who}の試合から、過程と期待値で見たタイムスタンプ付きの指摘です。`
+      : `${who}のこの試合から、指摘すべき局面はありませんでした。`;
+  }
+  return `${who}向けに、悩みと根拠から過程の改善点を整理しました。`;
 }
 
 export const geminiCoachProvider: VideoCoachProvider = new GeminiVideoCoachProvider();

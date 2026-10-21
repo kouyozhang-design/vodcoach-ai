@@ -31,6 +31,7 @@ type ParsedCoachBody = {
   chunkCount?: number;
   segmentOnly?: boolean;
   chunkReports?: CoachChunkReport[];
+  recentCues?: string[];
 };
 
 export async function POST(request: Request) {
@@ -81,6 +82,7 @@ export async function POST(request: Request) {
     if (parsed.chunkCount != null) payload.chunkCount = parsed.chunkCount;
     if (parsed.segmentOnly) payload.segmentOnly = true;
     if (parsed.chunkReports) payload.chunkReports = parsed.chunkReports;
+    if (parsed.recentCues) payload.recentCues = parsed.recentCues;
 
     const result = await getCoachProvider().analyze(payload);
     return NextResponse.json(result);
@@ -117,6 +119,8 @@ async function readCoachBody(request: Request): Promise<ParsedCoachBody | NextRe
   if (videoUrl instanceof NextResponse) return videoUrl;
   const chunkReports = parseChunkReports(body.chunkReports);
   if (chunkReports instanceof NextResponse) return chunkReports;
+  const recentCues = parseRecentCues(body.recentCues);
+  if (recentCues instanceof NextResponse) return recentCues;
 
   const mode = resolveCoachMode({ mode: stringifyField(body.mode) as CoachMode });
 
@@ -135,6 +139,7 @@ async function readCoachBody(request: Request): Promise<ParsedCoachBody | NextRe
     chunkCount: parseInteger(body.chunkCount),
     segmentOnly: body.segmentOnly === true,
     chunkReports,
+    recentCues,
   };
 }
 
@@ -218,6 +223,20 @@ function parseChunkReports(value: unknown): CoachChunkReport[] | undefined | Nex
     });
   }
   return reports;
+}
+
+function parseRecentCues(value: unknown): string[] | undefined | NextResponse {
+  if (value == null) return undefined;
+  if (!Array.isArray(value)) {
+    return NextResponse.json({ error: "直近の指摘の形式が正しくありません。" }, { status: 400 });
+  }
+  const cues: string[] = [];
+  for (const entry of value.slice(0, 6)) {
+    if (typeof entry !== "string") continue;
+    const trimmed = entry.trim().slice(0, 200);
+    if (trimmed) cues.push(trimmed);
+  }
+  return cues.length > 0 ? cues : undefined;
 }
 
 function parseNumber(value: unknown): number | undefined {
