@@ -266,7 +266,7 @@ export function LiveSession({
             </p>
             <p className="mt-2 max-w-sm text-xs leading-5 text-zinc-600">
               {captureOk
-                ? "画面共有を開始すると、約7秒ごとに今の画面を読んで指摘を差し替えます。ゲームの上にはオーバーレイを出しません。"
+                ? "画面共有を開始すると、約5秒ごとに今の画面を読んで指摘を差し替えます。ゲームの上にはオーバーレイを出しません。"
                 : "PCの Chrome / Edge で開いてください。iPhone / iPad と多くのモバイルブラウザでは getDisplayMedia が使えません。"}
             </p>
           </div>

@@ -14,12 +14,18 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
+import { mapPool } from "@/lib/async-pool";
 import { requestCoach } from "@/lib/coach/client";
-import type { CoachChunkReport, CoachResponse } from "@/lib/coach/types";
+import type { CoachChunkReport, CoachFrame, CoachResponse } from "@/lib/coach/types";
 import { extractJpegFramesInRange } from "@/lib/extract-frames";
 import { gameConfigs, gameIds, type GameId } from "@/lib/games";
 import {
-  formatTimestamp, isLongMatch, MATCH_COVER_MAX_SEC, planMatchChunks,
+  isLongMatch,
+  MATCH_CHUNK_CONCURRENCY,
+  MATCH_CHUNK_STAGGER_MS,
+  MATCH_COVER_MAX_SEC,
+  planMatchChunks,
+  type MatchChunk,
 } from "@/lib/match-plan";
 import {
   fileFromDataTransfer,
@@ -224,44 +230,74 @@ export default function Home() {
 
       const chunks = planMatchChunks(duration);
       const truncated = duration > MATCH_COVER_MAX_SEC;
-      const reports: CoachChunkReport[] = [];
+      const reports: Array<CoachChunkReport | null> = Array.from({ length: chunks.length }, () => null);
       let failed = 0;
-      for (const chunk of chunks) {
-        const label = `区間 ${chunk.index + 1}/${chunks.length}（${formatTimestamp(chunk.startSec)}–${formatTimestamp(chunk.endSec)}）を解析中`;
-        setProgressLabel(label);
-        setProgress(8 + Math.round((chunk.index / Math.max(1, chunks.length)) * 78));
-        try {
-          const frames = await extractJpegFramesInRange(
-            videoRef.current,
-            previewUrl,
-            chunk.startSec,
-            chunk.endSec,
-            6,
-          );
-          const payload = await requestCoach({
-            ...base,
-            videoUrl,
-            frames,
-            mode: "match-chunk",
-            startOffsetSec: chunk.startSec,
-            endOffsetSec: chunk.endSec,
-            durationSec: duration,
-            chunkIndex: chunk.index,
-            chunkCount: chunks.length,
-          });
-          reports.push({
-            headline: payload.headline,
-            summary: payload.summary,
-            insights: payload.insights,
-            startOffsetSec: chunk.startSec,
-            endOffsetSec: chunk.endSec,
-          });
-        } catch {
-          failed += 1;
+      let finished = 0;
+
+      const analyzeChunk = async (chunk: MatchChunk, frames: CoachFrame[]) => {
+        const payload = await requestCoach({
+          ...base,
+          videoUrl,
+          frames,
+          mode: "match-chunk",
+          startOffsetSec: chunk.startSec,
+          endOffsetSec: chunk.endSec,
+          durationSec: duration,
+          chunkIndex: chunk.index,
+          chunkCount: chunks.length,
+        });
+        return {
+          headline: payload.headline,
+          summary: payload.summary,
+          insights: payload.insights,
+          startOffsetSec: chunk.startSec,
+          endOffsetSec: chunk.endSec,
+        } satisfies CoachChunkReport;
+      };
+
+      const markChunkProgress = () => {
+        finished += 1;
+        setProgress(8 + Math.round((finished / Math.max(1, chunks.length)) * 70));
+        setProgressLabel(`${chunks.length}区間を並列解析中（${finished}/${chunks.length}）`);
+      };
+
+      setProgressLabel(`${chunks.length}区間を並列解析中（0/${chunks.length}）`);
+      await mapPool(
+        chunks,
+        MATCH_CHUNK_CONCURRENCY,
+        async (chunk) => {
+          try {
+            reports[chunk.index] = await analyzeChunk(chunk, []);
+          } catch {
+            // Blob URL path failed — JPEG backup is retried below, one chunk at a time.
+          } finally {
+            markChunkProgress();
+          }
+        },
+        { staggerMs: MATCH_CHUNK_STAGGER_MS },
+      );
+
+      const missing = chunks.filter((chunk) => !reports[chunk.index]);
+      if (missing.length > 0) {
+        setProgressLabel(`失敗した${missing.length}区間を静止画バックアップで再解析中`);
+        for (const chunk of missing) {
+          try {
+            const frames = await extractJpegFramesInRange(
+              videoRef.current,
+              previewUrl,
+              chunk.startSec,
+              chunk.endSec,
+              6,
+            );
+            reports[chunk.index] = await analyzeChunk(chunk, frames);
+          } catch {
+            failed += 1;
+          }
         }
       }
 
-      if (reports.length === 0) {
+      const collected = reports.filter((report): report is CoachChunkReport => report != null);
+      if (collected.length === 0) {
         throw new Error("試合のどの区間も解析できませんでした。短いクリップで試すか、もう一度お試しください。");
       }
 
@@ -271,7 +307,7 @@ export default function Home() {
         ...base,
         mode: "match-merge",
         durationSec: duration,
-        chunkReports: reports,
+        chunkReports: collected,
       });
       if (truncated) {
         merged.truncated = true;

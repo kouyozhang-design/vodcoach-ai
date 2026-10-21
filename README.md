@@ -7,8 +7,8 @@ Clips are uploaded **directly to Vercel Blob** from the browser so they never pa
 ## Coaching modes
 
 - **Short clip (about 90 seconds or less):** one Gemini video call (`gemini-3.8-flash`) on the Blob URL.
-- **Full match (longer VODs):** the client splits the timeline into ~40 second windows so each Hobby function stays under ~60 seconds. Each window sends the same Blob URL plus time offsets (and JPEG stills as backup). Results merge into one match report with more timestamped scenes — not only aim / positioning / abilities / practice.
-- **PC live:** browser `getDisplayMedia` (window or screen). About every 7 seconds the page grabs JPEGs and updates the coaching panel. There is no overlay on the game. Windowed or borderless is required so you can see this site. VALORANT Vanguard and similar anti-cheat may block capture (black frames or a hard failure); the UI says so.
+- **Full match (longer VODs):** the client splits the timeline into ~40 second windows so each Hobby function stays under ~60 seconds, then runs up to 3 Gemini calls in parallel on the same Blob URL plus time offsets. JPEG stills are only extracted if that Blob URL path fails. Results merge into one match report with more timestamped scenes — not only aim / positioning / abilities / practice.
+- **PC live:** browser `getDisplayMedia` (window or screen). About every 5 seconds the page grabs JPEGs and updates the coaching panel. There is no overlay on the game. Windowed or borderless is required so you can see this site. VALORANT Vanguard and similar anti-cheat may block capture (black frames or a hard failure); the UI says so.
 
 Live coaching uses Gemini when `COACH_PROVIDER=gemini` and `GEMINI_API_KEY` are set on the server. Without a key, analysis falls back to the local mock. Do not prefix secrets with `NEXT_PUBLIC_`.
 
@@ -33,7 +33,7 @@ You need [Node.js](https://nodejs.org/) 20 or newer and npm.
 5. Open [http://localhost:3000](http://localhost:3000).
 6. Notes-only coaching works with no keys (8+ characters in the struggle field).
 7. Video coaching needs `BLOB_READ_WRITE_TOKEN` for the client upload. If it is missing, the app shows a Japanese error instead of sending the file to `/api/coach`.
-8. Real clip / match / live analysis also needs `GEMINI_API_KEY`. Match windows prefer the Blob URL with time offsets and do not re-download the whole VOD through the Gemini Files API (that path is still used for short clips).
+8. Real clip / match / live analysis also needs `GEMINI_API_KEY`. Match windows prefer the Blob URL with time offsets (up to 3 at a time) and do not re-download the whole VOD through the Gemini Files API (that path is still used for short clips). JPEG backups run only when the URL call fails.
 
 ## Deploy on Vercel (Hobby / free)
 
@@ -73,7 +73,8 @@ src/
 │   ├── insight-card.tsx
 │   └── live-session.tsx         # Screen capture + live panel
 └── lib/
-    ├── match-plan.ts            # 40s windows, timestamp shift
+    ├── match-plan.ts            # 40s windows, timestamp shift, chunk pool
+    ├── async-pool.ts            # bounded parallel match-chunk calls
     ├── live-capture.ts
     ├── upload-clip.ts           # Direct Blob upload
     └── coach/

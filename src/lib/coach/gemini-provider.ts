@@ -22,7 +22,8 @@ const PARSE_ERROR = "AIコーチの応答を解析できませんでした。";
 class CoachProviderError extends Error {
   constructor(
     message: string,
-    readonly kind: "http" | "parse",
+    readonly kind: "http" | "parse" | "rate-limit",
+    readonly status?: number,
   ) {
     super(message);
   }
@@ -73,17 +74,18 @@ async function analyzeVideo(
   const tryUrl = size === undefined || size <= EXTERNAL_URL_MAX_BYTES || mode !== "clip";
   if (tryUrl) {
     try {
-      return await generateCoachJson(apiKey, [{ text: userText }, urlPart, ...extras], mode);
+      // Blob URL path: video only. JPEG backups stay off this request so HUD/legend reads stay on the clip.
+      return await generateCoachJson(apiKey, [{ text: userText }, urlPart], mode);
     } catch (error) {
-      const canFallback = error instanceof CoachProviderError ? error.kind === "http" : true;
-      if (!canFallback) throw error;
-      if (extras.length > 0 && mode !== "clip") {
-        return generateCoachJson(apiKey, [{ text: userText }, ...extras], mode);
-      }
-      if (!allowFilesApi) {
-        if (extras.length > 0) return generateCoachJson(apiKey, [{ text: userText }, ...extras], mode);
+      if (error instanceof CoachProviderError && (error.kind === "parse" || error.kind === "rate-limit")) {
         throw error;
       }
+      const canFallback = error instanceof CoachProviderError ? error.kind === "http" : true;
+      if (!canFallback) throw error;
+      if (extras.length > 0) {
+        return generateCoachJson(apiKey, [{ text: userText }, ...extras], mode);
+      }
+      if (!allowFilesApi) throw error;
     }
   }
 
@@ -138,40 +140,62 @@ function inlineJpeg(dataUrl: string): GeminiPart | null {
   return { inline_data: { mime_type: "image/jpeg", data: match[2].replace(/\s+/g, "") } };
 }
 
+const MAX_GENERATE_ATTEMPTS = 3;
+
 async function generateCoachJson(apiKey: string, parts: GeminiPart[], mode: CoachMode) {
-  const response = await fetch(GENERATE_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-goog-api-key": apiKey,
+  const body = JSON.stringify({
+    system_instruction: { parts: [{ text: systemPrompt(mode) }] },
+    contents: [{ role: "user", parts }],
+    generationConfig: {
+      temperature: mode === "live" ? 0.3 : 0.4,
+      responseMimeType: "application/json",
+      responseSchema: schemaFor(mode),
     },
-    body: JSON.stringify({
-      system_instruction: { parts: [{ text: systemPrompt(mode) }] },
-      contents: [{ role: "user", parts }],
-      generationConfig: {
-        temperature: mode === "live" ? 0.3 : 0.4,
-        responseMimeType: "application/json",
-        responseSchema: schemaFor(mode),
-      },
-    }),
   });
 
-  if (!response.ok) throw new CoachProviderError(CONNECT_ERROR, "http");
+  let lastRateLimit: CoachProviderError | undefined;
+  for (let attempt = 0; attempt < MAX_GENERATE_ATTEMPTS; attempt += 1) {
+    const response = await fetch(GENERATE_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": apiKey,
+      },
+      body,
+    });
 
-  const payload = (await response.json()) as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-  };
-  const raw = payload.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("") ?? "";
-  if (!raw.trim()) throw new CoachProviderError(PARSE_ERROR, "parse");
+    if (response.status === 429 || response.status === 503) {
+      lastRateLimit = new CoachProviderError(CONNECT_ERROR, "rate-limit", response.status);
+      if (attempt < MAX_GENERATE_ATTEMPTS - 1) {
+        await sleep(retryDelayMs(attempt));
+        continue;
+      }
+      throw lastRateLimit;
+    }
 
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== "object") throw new CoachProviderError(PARSE_ERROR, "parse");
-    return parsed as Record<string, unknown>;
-  } catch (error) {
-    if (error instanceof CoachProviderError) throw error;
-    throw new CoachProviderError(PARSE_ERROR, "parse");
+    if (!response.ok) throw new CoachProviderError(CONNECT_ERROR, "http", response.status);
+
+    const payload = (await response.json()) as {
+      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+    };
+    const raw = payload.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("") ?? "";
+    if (!raw.trim()) throw new CoachProviderError(PARSE_ERROR, "parse");
+
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (!parsed || typeof parsed !== "object") throw new CoachProviderError(PARSE_ERROR, "parse");
+      return parsed as Record<string, unknown>;
+    } catch (error) {
+      if (error instanceof CoachProviderError) throw error;
+      throw new CoachProviderError(PARSE_ERROR, "parse");
+    }
   }
+
+  throw lastRateLimit ?? new CoachProviderError(CONNECT_ERROR, "http");
+}
+
+function retryDelayMs(attempt: number) {
+  return 800 * 2 ** attempt + Math.floor(Math.random() * 280);
 }
 
 async function uploadBlobToGeminiFiles(apiKey: string, videoUrl: string, mimeType: string) {

@@ -4,6 +4,9 @@ export const SHORT_CLIP_MAX_SEC = 90;
 export const MATCH_CHUNK_SEC = 40;
 export const MAX_MATCH_CHUNKS = 20;
 export const MATCH_COVER_MAX_SEC = MATCH_CHUNK_SEC * MAX_MATCH_CHUNKS;
+/** Parallel match-chunk Gemini calls. 3 stays under typical paid RPM; 429 backoff covers free-tier 5 RPM. */
+export const MATCH_CHUNK_CONCURRENCY = 3;
+export const MATCH_CHUNK_STAGGER_MS = 350;
 
 export type MatchChunk = {
   index: number;
