@@ -15,15 +15,22 @@ import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { mapPool } from "@/lib/async-pool";
-import { requestCoach } from "@/lib/coach/client";
+import {
+  COACH_REQUEST_TIMEOUT_MS,
+  isAbortError,
+  MATCH_DEADLINE_ERROR,
+  requestCoach,
+} from "@/lib/coach/client";
 import type { CoachChunkReport, CoachFrame, CoachResponse } from "@/lib/coach/types";
 import { extractJpegFramesInRange } from "@/lib/extract-frames";
 import { gameConfigs, gameIds, type GameId } from "@/lib/games";
 import {
   isLongMatch,
+  MATCH_ANALYSIS_DEADLINE_MS,
   MATCH_CHUNK_CONCURRENCY,
   MATCH_CHUNK_STAGGER_MS,
   MATCH_COVER_MAX_SEC,
+  MATCH_JPEG_RETRY_BUDGET_MS,
   planMatchChunks,
   type MatchChunk,
 } from "@/lib/match-plan";
@@ -74,6 +81,10 @@ function SelectField({
 type AppMode = "vod" | "live";
 type VodStatus = "empty" | "ready" | "analyzing" | "complete" | "error";
 
+function nowMs() {
+  return Date.now();
+}
+
 export default function Home() {
   const [appMode, setAppMode] = useState<AppMode>("vod");
   const [file, setFile] = useState<File | null>(null);
@@ -86,11 +97,14 @@ export default function Home() {
   const [status, setStatus] = useState<VodStatus>("empty");
   const [progress, setProgress] = useState(0);
   const [progressLabel, setProgressLabel] = useState("");
+  const [chunkProgress, setChunkProgress] = useState<{ done: number; total: number } | null>(null);
   const [error, setError] = useState("");
   const [result, setResult] = useState<CoachResponse | null>(null);
   const safariDropOnly = useSyncExternalStore(subscribeNoop, getSafariDropOnly, () => true);
   const urlRef = useRef("");
   const videoRef = useRef<HTMLVideoElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const cancelledRef = useRef(false);
   const gameConfig = gameConfigs[game];
   const hasNotes = concern.trim().length >= 8;
   const canSubmit = status !== "analyzing" && (Boolean(file) || hasNotes);
@@ -106,6 +120,8 @@ export default function Home() {
     document.addEventListener("submit", blockNative, true);
     document.addEventListener("invalid", blockNative, true);
     return () => {
+      cancelledRef.current = true;
+      abortRef.current?.abort();
       window.removeEventListener("submit", blockNative, true);
       window.removeEventListener("invalid", blockNative, true);
       document.removeEventListener("submit", blockNative, true);
@@ -194,48 +210,58 @@ export default function Home() {
       setStatus("error");
       return;
     }
+    abortRef.current?.abort();
+    const run = new AbortController();
+    abortRef.current = run;
+    const deadlineAt = nowMs() + MATCH_ANALYSIS_DEADLINE_MS;
+    const deadlineTimer = window.setTimeout(() => {
+      run.abort(new Error(MATCH_DEADLINE_ERROR));
+    }, MATCH_ANALYSIS_DEADLINE_MS);
+
     setError("");
     setResult(null);
+    setChunkProgress(null);
     setProgress(4);
     setProgressLabel(file ? "動画を準備しています" : "ノートからプランを作っています");
     setStatus("analyzing");
     const timer = window.setInterval(() => {
-      setProgress((current) => Math.min(current + Math.max(1, (96 - current) * 0.04), 96));
-    }, 120);
+      setProgress((current) => Math.min(current + Math.max(0.6, (88 - current) * 0.03), 88));
+    }, 240);
+
+    const remainingMs = () => deadlineAt - nowMs();
+    const coach = (body: Parameters<typeof requestCoach>[0], timeoutMs?: number) =>
+      requestCoach(body, { signal: run.signal, timeoutMs });
+
     try {
       const trimmedConcern = concern.trim();
       const base = { game, rank, character, concern: trimmedConcern };
       if (!file) {
-        const payload = await requestCoach({ ...base, mode: "clip" });
-        setProgress(100);
-        setResult(payload);
-        window.setTimeout(() => setStatus("complete"), 260);
+        const payload = await coach({ ...base, mode: "clip" });
+        finishSuccess(payload);
         return;
       }
 
       setProgressLabel("動画の長さを確認しています");
       const duration = await probeVideoDuration(file);
+      if (run.signal.aborted) throw new Error(MATCH_DEADLINE_ERROR);
       const match = isLongMatch(duration);
       setProgressLabel("動画をクラウドへ送っています");
-      const videoUrl = await uploadClipToBlob(file);
+      const videoUrl = await uploadClipToBlob(file, run.signal);
 
       if (!match || duration == null) {
         setProgressLabel("クリップを解析しています");
-        const payload = await requestCoach({ ...base, videoUrl, mode: "clip", durationSec: duration ?? undefined });
-        setProgress(100);
-        setResult(payload);
-        window.setTimeout(() => setStatus("complete"), 260);
+        const payload = await coach({ ...base, videoUrl, mode: "clip", durationSec: duration ?? undefined });
+        finishSuccess(payload);
         return;
       }
 
       const chunks = planMatchChunks(duration);
       const truncated = duration > MATCH_COVER_MAX_SEC;
       const reports: Array<CoachChunkReport | null> = Array.from({ length: chunks.length }, () => null);
-      let failed = 0;
       let finished = 0;
 
       const analyzeChunk = async (chunk: MatchChunk, frames: CoachFrame[]) => {
-        const payload = await requestCoach({
+        const payload = await coach({
           ...base,
           videoUrl,
           frames,
@@ -257,30 +283,38 @@ export default function Home() {
 
       const markChunkProgress = () => {
         finished += 1;
+        setChunkProgress({ done: finished, total: chunks.length });
         setProgress(8 + Math.round((finished / Math.max(1, chunks.length)) * 70));
-        setProgressLabel(`${chunks.length}区間を並列解析中（${finished}/${chunks.length}）`);
+        setProgressLabel(`区間 ${finished} / ${chunks.length} を解析しました`);
       };
 
-      setProgressLabel(`${chunks.length}区間を並列解析中（0/${chunks.length}）`);
-      await mapPool(
-        chunks,
-        MATCH_CHUNK_CONCURRENCY,
-        async (chunk) => {
-          try {
-            reports[chunk.index] = await analyzeChunk(chunk, []);
-          } catch {
-            // Blob URL path failed — JPEG backup is retried below, one chunk at a time.
-          } finally {
-            markChunkProgress();
-          }
-        },
-        { staggerMs: MATCH_CHUNK_STAGGER_MS },
-      );
+      setChunkProgress({ done: 0, total: chunks.length });
+      setProgressLabel(`区間 0 / ${chunks.length} を並列解析中`);
+      try {
+        await mapPool(
+          chunks,
+          MATCH_CHUNK_CONCURRENCY,
+          async (chunk) => {
+            try {
+              reports[chunk.index] = await analyzeChunk(chunk, []);
+            } catch (reason) {
+              if (run.signal.aborted || isAbortError(reason)) throw reason;
+              // Blob URL / 500 / 504 / per-request timeout — JPEG backup below, one at a time.
+            } finally {
+              markChunkProgress();
+            }
+          },
+          { staggerMs: MATCH_CHUNK_STAGGER_MS, signal: run.signal },
+        );
+      } catch (reason) {
+        if (!run.signal.aborted && !isAbortError(reason)) throw reason;
+      }
 
       const missing = chunks.filter((chunk) => !reports[chunk.index]);
-      if (missing.length > 0) {
+      if (missing.length > 0 && !run.signal.aborted) {
         setProgressLabel(`失敗した${missing.length}区間を静止画バックアップで再解析中`);
         for (const chunk of missing) {
+          if (run.signal.aborted || remainingMs() < MATCH_JPEG_RETRY_BUDGET_MS) break;
           try {
             const frames = await extractJpegFramesInRange(
               videoRef.current,
@@ -290,25 +324,35 @@ export default function Home() {
               6,
             );
             reports[chunk.index] = await analyzeChunk(chunk, frames);
-          } catch {
-            failed += 1;
+          } catch (reason) {
+            if (run.signal.aborted || isAbortError(reason)) break;
           }
         }
       }
 
       const collected = reports.filter((report): report is CoachChunkReport => report != null);
+      const failed = chunks.length - collected.length;
       if (collected.length === 0) {
-        throw new Error("試合のどの区間も解析できませんでした。短いクリップで試すか、もう一度お試しください。");
+        throw new Error(
+          run.signal.aborted
+            ? MATCH_DEADLINE_ERROR
+            : "試合のどの区間も解析できませんでした。短いクリップで試すか、もう一度お試しください。",
+        );
       }
 
       setProgressLabel("試合レポートを1本にまとめています");
       setProgress(92);
-      const merged = await requestCoach({
-        ...base,
-        mode: "match-merge",
-        durationSec: duration,
-        chunkReports: collected,
-      });
+      const mergeTimeout = Math.max(12_000, Math.min(COACH_REQUEST_TIMEOUT_MS, remainingMs() > 0 ? remainingMs() : 20_000));
+      const mergeSignal = run.signal.aborted ? undefined : run.signal;
+      const merged = await requestCoach(
+        {
+          ...base,
+          mode: "match-merge",
+          durationSec: duration,
+          chunkReports: collected,
+        },
+        { signal: mergeSignal, timeoutMs: mergeTimeout },
+      );
       if (truncated) {
         merged.truncated = true;
         merged.summary = `${merged.summary} 長さの上限（約${Math.round(MATCH_COVER_MAX_SEC / 60)}分）を超えた後半は対象外です。`;
@@ -316,15 +360,30 @@ export default function Home() {
       if (failed > 0) {
         merged.summary = `${merged.summary} ${failed}区間はタイムアウトまたは接続エラーでスキップしました。`;
       }
-      setProgress(100);
-      setResult(merged);
-      window.setTimeout(() => setStatus("complete"), 260);
+      if (run.signal.aborted) {
+        merged.summary = `${merged.summary} 5分の上限のため残りの区間は打ち切りました。`;
+      }
+      finishSuccess(merged);
     } catch (reason) {
+      if (cancelledRef.current) return;
+      abortRef.current?.abort();
+      setChunkProgress(null);
       setError(reason instanceof Error ? reason.message : "解析に失敗しました。");
       setStatus("error");
     } finally {
       window.clearInterval(timer);
+      window.clearTimeout(deadlineTimer);
     }
+  }
+
+  function finishSuccess(payload: CoachResponse) {
+    if (cancelledRef.current) return;
+    setChunkProgress(null);
+    setProgress(100);
+    setResult(payload);
+    window.setTimeout(() => {
+      if (!cancelledRef.current) setStatus("complete");
+    }, 260);
   }
 
   const reportKind = result?.kind ?? (file ? "clip" : "notes");
@@ -474,7 +533,7 @@ export default function Home() {
                 disabled={!canSubmit}
                 className="mt-5 flex h-12 w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-red-600 to-red-500 text-sm font-semibold text-white shadow-[0_10px_35px_rgba(220,38,38,.2)] hover:from-red-500 hover:to-red-400 disabled:pointer-events-none disabled:opacity-70"
               >
-                {status === "analyzing" ? <LoaderCircle className="size-4 animate-spin" /> : <Sparkles className="size-4" />} {status === "analyzing" ? (file ? "試合を解析中..." : "コーチングを生成中...") : "AIコーチに解析させる"}
+                {status === "analyzing" ? <LoaderCircle className="size-4 animate-spin" /> : <Sparkles className="size-4" />} {status === "analyzing" ? (chunkProgress ? `解析中 ${chunkProgress.done} / ${chunkProgress.total}` : file ? "試合を解析中..." : "コーチングを生成中...") : "AIコーチに解析させる"}
               </button>
               <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[9px] text-zinc-700"><Shield className="size-3 shrink-0" />{file || hasNotes ? "動画はクラウドへ直接送り、解析APIにはURLだけを渡します。長い試合は約40秒ごとに分け、Hobbyの制限内で一本にまとめます。" : "動画を追加するか、立ち回り・目的を8文字以上書いてください。"}</p>
             </div>
@@ -496,10 +555,17 @@ export default function Home() {
               <div className="relative flex min-h-[520px] flex-col items-center justify-center overflow-hidden px-6 text-center sm:min-h-[620px] sm:px-8">
                 <div className="absolute inset-x-0 top-[38%] h-px animate-pulse bg-gradient-to-r from-transparent via-red-500 to-transparent shadow-[0_0_18px_#ef4444]" />
                 <div className="relative grid size-20 place-items-center rounded-3xl border border-red-500/20 bg-red-500/[0.07]"><ScanLine className="size-8 animate-pulse text-red-400" /><span className="absolute -inset-2 animate-ping rounded-[28px] border border-red-500/10" /></div>
-                <p className="mt-7 text-lg font-semibold">{file ? "試合を解析中" : "状況を分析中"}</p>
+                <p className="mt-7 text-lg font-semibold">
+                  {chunkProgress
+                    ? `区間 ${chunkProgress.done} / ${chunkProgress.total}`
+                    : file ? "試合を解析中" : "状況を分析中"}
+                </p>
                 <p className="mt-2 text-xs text-zinc-600">{progressLabel || (file ? "映像の立ち回りと撃ち合いを読み取っています" : "改善ポイントをコーチングに変換しています")}</p>
                 <Progress value={progress} className="mt-7 h-1.5 max-w-sm bg-white/[0.05] [&_[data-slot=progress-indicator]]:bg-gradient-to-r [&_[data-slot=progress-indicator]]:from-red-700 [&_[data-slot=progress-indicator]]:to-red-400" />
-                <div className="mt-3 flex w-full max-w-sm justify-between font-mono text-[9px] text-zinc-700"><span>{file ? "MATCH_SCAN" : "NOTES_PLAN"}</span><span>{Math.round(progress)}%</span></div>
+                <div className="mt-3 flex w-full max-w-sm justify-between font-mono text-[9px] text-zinc-700">
+                  <span>{chunkProgress ? `CHUNK ${chunkProgress.done}/${chunkProgress.total}` : file ? "MATCH_SCAN" : "NOTES_PLAN"}</span>
+                  <span>{Math.round(progress)}%</span>
+                </div>
               </div>
             )}
 

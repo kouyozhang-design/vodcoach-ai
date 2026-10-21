@@ -27,3 +27,24 @@ test("mapPool handles empty input and caps workers to length", async () => {
   });
   assert.deepEqual(seen, [7]);
 });
+
+test("mapPool stops claiming new items when aborted", async () => {
+  const controller = new AbortController();
+  const started: number[] = [];
+  const pending: Array<() => void> = [];
+  const run = mapPool(
+    [1, 2, 3, 4, 5],
+    2,
+    async (item) => {
+      started.push(item);
+      await new Promise<void>((resolve) => pending.push(resolve));
+      return item;
+    },
+    { signal: controller.signal },
+  );
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  controller.abort();
+  pending.forEach((resolve) => resolve());
+  await assert.rejects(run, (error: unknown) => error instanceof Error && error.name === "AbortError");
+  assert.ok(started.length <= 3);
+});

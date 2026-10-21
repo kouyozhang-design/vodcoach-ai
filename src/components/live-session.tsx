@@ -48,6 +48,7 @@ export function LiveSession({
   const streamRef = useRef<MediaStream | null>(null);
   const inFlight = useRef(false);
   const cancelled = useRef(false);
+  const coachAbort = useRef<AbortController | null>(null);
   const blackStreak = useRef(0);
   const configRef = useRef({ game, rank, character, concern });
   const captureOk = useSyncExternalStore(() => () => undefined, canCaptureDisplay, () => false);
@@ -56,6 +57,7 @@ export function LiveSession({
   useEffect(() => {
     return () => {
       cancelled.current = true;
+      coachAbort.current?.abort();
       stopStream();
     };
   }, []);
@@ -137,15 +139,21 @@ export function LiveSession({
     inFlight.current = true;
     setStatus("coaching");
     const input = configRef.current;
+    coachAbort.current?.abort();
+    const run = new AbortController();
+    coachAbort.current = run;
     try {
-      const payload = await requestCoach({
-        game: input.game,
-        rank: input.rank,
-        character: input.character,
-        concern: input.concern.trim() || `${input.rank}の${input.character}として今の画面の次の動きを教えてください`,
-        frames,
-        mode: "live",
-      });
+      const payload = await requestCoach(
+        {
+          game: input.game,
+          rank: input.rank,
+          character: input.character,
+          concern: input.concern.trim() || `${input.rank}の${input.character}として今の画面の次の動きを教えてください`,
+          frames,
+          mode: "live",
+        },
+        { signal: run.signal },
+      );
       if (!cancelled.current) {
         setResult(payload);
         setTick((value) => value + 1);

@@ -10,7 +10,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --experimental-strip-types --test src/lib/*.test.ts"
+    "test": "node --experimental-strip-types --test src/lib/*.test.ts src/lib/coach/*.test.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

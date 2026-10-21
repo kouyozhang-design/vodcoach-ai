@@ -89,8 +89,15 @@ async function readyPlayer(video: HTMLVideoElement | null, src?: string) {
   return player;
 }
 
+const SEEK_TIMEOUT_MS = 8_000;
+const LOAD_TIMEOUT_MS = 12_000;
+
 function seekTo(video: HTMLVideoElement, time: number) {
   return new Promise<void>((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      cleanup();
+      reject(new Error("フレームを抽出できませんでした。"));
+    }, SEEK_TIMEOUT_MS);
     const onSeeked = () => {
       cleanup();
       resolve();
@@ -100,6 +107,7 @@ function seekTo(video: HTMLVideoElement, time: number) {
       reject(new Error("フレームを抽出できませんでした。"));
     };
     const cleanup = () => {
+      window.clearTimeout(timer);
       video.removeEventListener("seeked", onSeeked);
       video.removeEventListener("error", onError);
     };
@@ -118,6 +126,10 @@ function waitEvent(video: HTMLVideoElement, eventName: "loadeddata" | "loadedmet
   if (eventName === "loadeddata" && video.readyState >= 2) return Promise.resolve();
   if (eventName === "loadedmetadata" && video.readyState >= 1) return Promise.resolve();
   return new Promise<void>((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      cleanup();
+      reject(new Error("動画を読み込めませんでした。"));
+    }, LOAD_TIMEOUT_MS);
     const onReady = () => {
       cleanup();
       resolve();
@@ -127,6 +139,7 @@ function waitEvent(video: HTMLVideoElement, eventName: "loadeddata" | "loadedmet
       reject(new Error("動画を読み込めませんでした。"));
     };
     const cleanup = () => {
+      window.clearTimeout(timer);
       video.removeEventListener(eventName, onReady);
       video.removeEventListener("error", onError);
     };

@@ -155,14 +155,20 @@ async function generateCoachJson(apiKey: string, parts: GeminiPart[], mode: Coac
 
   let lastRateLimit: CoachProviderError | undefined;
   for (let attempt = 0; attempt < MAX_GENERATE_ATTEMPTS; attempt += 1) {
-    const response = await fetch(GENERATE_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": apiKey,
-      },
-      body,
-    });
+    let response: Response;
+    try {
+      response = await fetch(GENERATE_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": apiKey,
+        },
+        body,
+        signal: AbortSignal.timeout(48_000),
+      });
+    } catch {
+      throw new CoachProviderError(CONNECT_ERROR, "http");
+    }
 
     if (response.status === 429 || response.status === 503) {
       lastRateLimit = new CoachProviderError(CONNECT_ERROR, "rate-limit", response.status);
@@ -269,7 +275,11 @@ async function waitUntilActive(apiKey: string, fileName: string) {
 async function sniffVideo(videoUrl: string) {
   const fromName = mimeFromVideoUrl(videoUrl);
   try {
-    const response = await fetch(videoUrl, { method: "HEAD", redirect: "follow" });
+    const response = await fetch(videoUrl, {
+      method: "HEAD",
+      redirect: "follow",
+      signal: AbortSignal.timeout(8_000),
+    });
     const fromHeader = headerMime(response.headers.get("content-type"));
     const raw = response.ok ? response.headers.get("content-length") : null;
     const parsed = raw ? Number(raw) : NaN;

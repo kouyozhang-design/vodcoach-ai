@@ -7,7 +7,7 @@ Clips are uploaded **directly to Vercel Blob** from the browser so they never pa
 ## Coaching modes
 
 - **Short clip (about 90 seconds or less):** one Gemini video call (`gemini-3.8-flash`) on the Blob URL.
-- **Full match (longer VODs):** the client splits the timeline into ~40 second windows so each Hobby function stays under ~60 seconds, then runs up to 3 Gemini calls in parallel on the same Blob URL plus time offsets. JPEG stills are only extracted if that Blob URL path fails. Results merge into one match report with more timestamped scenes — not only aim / positioning / abilities / practice.
+- **Full match (longer VODs):** the client splits the timeline into ~40 second windows so each Hobby function stays under ~60 seconds, then runs up to 3 Gemini calls in parallel on the same Blob URL plus time offsets. Each `/api/coach` call has a ~52s client timeout (under Hobby 60s) and leftover requests abort on error or unmount. The UI shows `区間 N / total`. Match analysis cannot stay spinning past 5 minutes. JPEG stills are only extracted if that Blob URL path fails. Results merge into one match report with more timestamped scenes — not only aim / positioning / abilities / practice.
 - **PC live:** browser `getDisplayMedia` (window or screen). About every 5 seconds the page grabs JPEGs and updates the coaching panel. There is no overlay on the game. Windowed or borderless is required so you can see this site. VALORANT Vanguard and similar anti-cheat may block capture (black frames or a hard failure); the UI says so.
 
 Live coaching uses Gemini when `COACH_PROVIDER=gemini` and `GEMINI_API_KEY` are set on the server. Without a key, analysis falls back to the local mock. Do not prefix secrets with `NEXT_PUBLIC_`.

@@ -1,5 +1,7 @@
 "use client";
 
+const PROBE_TIMEOUT_MS = 15_000;
+
 export async function probeVideoDuration(file: File): Promise<number | null> {
   const url = URL.createObjectURL(file);
   const video = document.createElement("video");
@@ -24,6 +26,10 @@ export async function probeVideoDuration(file: File): Promise<number | null> {
 function waitMetadata(video: HTMLVideoElement) {
   if (video.readyState >= 1 && Number.isFinite(video.duration)) return Promise.resolve();
   return new Promise<void>((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      cleanup();
+      reject(new Error("動画の長さを読み取れませんでした。"));
+    }, PROBE_TIMEOUT_MS);
     const onReady = () => {
       cleanup();
       resolve();
@@ -33,6 +39,7 @@ function waitMetadata(video: HTMLVideoElement) {
       reject(new Error("動画の長さを読み取れませんでした。"));
     };
     const cleanup = () => {
+      window.clearTimeout(timer);
       video.removeEventListener("loadedmetadata", onReady);
       video.removeEventListener("error", onError);
     };
