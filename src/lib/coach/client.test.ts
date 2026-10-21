@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
+import { MATCH_STALL_ERROR } from "../analysis-stall.ts";
 import {
   COACH_BAD_RESPONSE_ERROR,
   COACH_GATEWAY_ERROR,
@@ -91,11 +92,10 @@ test("requestCoach rejects non-JSON 200 and parent abort", async () => {
   );
 
   const controller = new AbortController();
-  controller.abort(new Error("試合解析が5分以内に終わりませんでした。短いクリップで試すか、もう一度お試しください。"));
+  controller.abort(new Error(MATCH_STALL_ERROR));
   await assert.rejects(
     () => requestCoach(sample, { signal: controller.signal, timeoutMs: 1_000 }),
-    (error: unknown) =>
-      error instanceof Error && error.message.includes("5分以内に終わりませんでした"),
+    (error: unknown) => error instanceof Error && error.message === MATCH_STALL_ERROR,
   );
 });
 

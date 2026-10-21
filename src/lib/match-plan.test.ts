@@ -3,7 +3,6 @@ import { test } from "node:test";
 import {
   formatTimestamp,
   isLongMatch,
-  MATCH_ANALYSIS_DEADLINE_MS,
   MATCH_CHUNK_CONCURRENCY,
   MATCH_CHUNK_SEC,
   planMatchChunks,
@@ -22,7 +21,6 @@ test("short clips stay one window", () => {
 test("match windows stay 40s and concurrency stays a small pool", () => {
   assert.equal(MATCH_CHUNK_SEC, 40);
   assert.equal(MATCH_CHUNK_CONCURRENCY, 3);
-  assert.equal(MATCH_ANALYSIS_DEADLINE_MS, 5 * 60 * 1000);
 });
 
 test("long matches split into ~40s windows and fold tiny remainders", () => {

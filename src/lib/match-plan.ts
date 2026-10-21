@@ -7,10 +7,6 @@ export const MATCH_COVER_MAX_SEC = MATCH_CHUNK_SEC * MAX_MATCH_CHUNKS;
 /** Parallel match-chunk Gemini calls. 3 stays under typical paid RPM; 429 backoff covers free-tier 5 RPM. */
 export const MATCH_CHUNK_CONCURRENCY = 3;
 export const MATCH_CHUNK_STAGGER_MS = 350;
-/** Hard client cap so a stalled wave cannot leave Analyze spinning past 5 minutes. */
-export const MATCH_ANALYSIS_DEADLINE_MS = 5 * 60 * 1000;
-/** JPEG backup needs extract + one timed coach call; skip if the deadline is closer than this. */
-export const MATCH_JPEG_RETRY_BUDGET_MS = 20_000;
 
 export type MatchChunk = {
   index: number;

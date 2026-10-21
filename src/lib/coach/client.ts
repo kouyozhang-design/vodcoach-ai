@@ -10,7 +10,6 @@ export const COACH_GATEWAY_ERROR = "解析サーバーが時間切れになり�
 export const COACH_SERVER_ERROR = "解析できませんでした。もう一度お試しください。";
 export const COACH_BAD_RESPONSE_ERROR = "解析サーバーから正しい応答が返りませんでした。";
 export const COACH_ABORTED_ERROR = "解析を中断しました。";
-export const MATCH_DEADLINE_ERROR = "試合解析が5分以内に終わりませんでした。短いクリップで試すか、もう一度お試しください。";
 
 export type RequestCoachOptions = {
   signal?: AbortSignal;
