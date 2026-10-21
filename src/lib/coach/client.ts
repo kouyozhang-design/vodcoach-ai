@@ -36,9 +36,11 @@ export async function requestCoach(
   const controller = new AbortController();
   const onParentAbort = () => controller.abort();
   parent?.addEventListener("abort", onParentAbort, { once: true });
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-  try {
+  const timeoutError = new Error(COACH_TIMEOUT_ERROR);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const fetchPromise = (async () => {
     const response = await fetch("/api/coach", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -53,19 +55,31 @@ export async function requestCoach(
       throw new Error(COACH_BAD_RESPONSE_ERROR);
     }
     return payload as CoachResponse;
+  })();
+
+  // Race the timer so a Safari/fetch that never rejects on abort still clears the spinner.
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(timeoutError);
+    }, timeoutMs);
+  });
+
+  try {
+    return await Promise.race([fetchPromise, timeoutPromise]);
   } catch (reason) {
     if (parent?.aborted) {
       throw abortError(parent);
     }
-    if (isAbortError(reason) || controller.signal.aborted) {
-      throw new Error(COACH_TIMEOUT_ERROR);
+    if (reason === timeoutError || isAbortError(reason) || controller.signal.aborted) {
+      throw timeoutError;
     }
     if (reason instanceof Error && reason.message.trim()) {
       throw reason;
     }
     throw new Error(COACH_SERVER_ERROR);
   } finally {
-    clearTimeout(timer);
+    if (timer !== undefined) clearTimeout(timer);
     parent?.removeEventListener("abort", onParentAbort);
   }
 }

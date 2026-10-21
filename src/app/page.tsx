@@ -105,6 +105,7 @@ export default function Home() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const cancelledRef = useRef(false);
+  const runIdRef = useRef(0);
   const gameConfig = gameConfigs[game];
   const hasNotes = concern.trim().length >= 8;
   const canSubmit = status !== "analyzing" && (Boolean(file) || hasNotes);
@@ -121,6 +122,7 @@ export default function Home() {
     document.addEventListener("invalid", blockNative, true);
     return () => {
       cancelledRef.current = true;
+      runIdRef.current += 1;
       abortRef.current?.abort();
       window.removeEventListener("submit", blockNative, true);
       window.removeEventListener("invalid", blockNative, true);
@@ -130,6 +132,19 @@ export default function Home() {
       if (urlRef.current) URL.revokeObjectURL(urlRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (status !== "analyzing") return;
+    const timer = window.setTimeout(() => {
+      if (cancelledRef.current) return;
+      runIdRef.current += 1;
+      abortRef.current?.abort();
+      setChunkProgress(null);
+      setError(MATCH_DEADLINE_ERROR);
+      setStatus("error");
+    }, MATCH_ANALYSIS_DEADLINE_MS);
+    return () => window.clearTimeout(timer);
+  }, [status]);
 
   function acceptVideo(nextFile: File) {
     setError("");
@@ -211,6 +226,8 @@ export default function Home() {
       return;
     }
     abortRef.current?.abort();
+    const runId = runIdRef.current + 1;
+    runIdRef.current = runId;
     const run = new AbortController();
     abortRef.current = run;
     const deadlineAt = nowMs() + MATCH_ANALYSIS_DEADLINE_MS;
@@ -237,7 +254,7 @@ export default function Home() {
       const base = { game, rank, character, concern: trimmedConcern };
       if (!file) {
         const payload = await coach({ ...base, mode: "clip" });
-        finishSuccess(payload);
+        finishSuccess(runId, payload);
         return;
       }
 
@@ -251,7 +268,7 @@ export default function Home() {
       if (!match || duration == null) {
         setProgressLabel("クリップを解析しています");
         const payload = await coach({ ...base, videoUrl, mode: "clip", durationSec: duration ?? undefined });
-        finishSuccess(payload);
+        finishSuccess(runId, payload);
         return;
       }
 
@@ -363,26 +380,32 @@ export default function Home() {
       if (run.signal.aborted) {
         merged.summary = `${merged.summary} 5分の上限のため残りの区間は打ち切りました。`;
       }
-      finishSuccess(merged);
+      finishSuccess(runId, merged);
     } catch (reason) {
-      if (cancelledRef.current) return;
-      abortRef.current?.abort();
-      setChunkProgress(null);
-      setError(reason instanceof Error ? reason.message : "解析に失敗しました。");
-      setStatus("error");
+      if (cancelledRef.current || runIdRef.current !== runId) return;
+      failAnalyze(reason instanceof Error ? reason.message : "解析に失敗しました。");
     } finally {
       window.clearInterval(timer);
       window.clearTimeout(deadlineTimer);
     }
   }
 
-  function finishSuccess(payload: CoachResponse) {
+  function failAnalyze(message: string) {
     if (cancelledRef.current) return;
+    runIdRef.current += 1;
+    abortRef.current?.abort();
+    setChunkProgress(null);
+    setError(message);
+    setStatus("error");
+  }
+
+  function finishSuccess(runId: number, payload: CoachResponse) {
+    if (cancelledRef.current || runIdRef.current !== runId) return;
     setChunkProgress(null);
     setProgress(100);
     setResult(payload);
     window.setTimeout(() => {
-      if (!cancelledRef.current) setStatus("complete");
+      if (!cancelledRef.current && runIdRef.current === runId) setStatus("complete");
     }, 260);
   }
 
@@ -533,7 +556,7 @@ export default function Home() {
                 disabled={!canSubmit}
                 className="mt-5 flex h-12 w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-red-600 to-red-500 text-sm font-semibold text-white shadow-[0_10px_35px_rgba(220,38,38,.2)] hover:from-red-500 hover:to-red-400 disabled:pointer-events-none disabled:opacity-70"
               >
-                {status === "analyzing" ? <LoaderCircle className="size-4 animate-spin" /> : <Sparkles className="size-4" />} {status === "analyzing" ? (chunkProgress ? `解析中 ${chunkProgress.done} / ${chunkProgress.total}` : file ? "試合を解析中..." : "コーチングを生成中...") : "AIコーチに解析させる"}
+                {status === "analyzing" ? <LoaderCircle className="size-4 animate-spin" /> : <Sparkles className="size-4" />} {status === "analyzing" ? (chunkProgress ? `解析中 ${chunkProgress.done} / ${chunkProgress.total}` : file ? "試合を解析中（最大5分）" : "コーチングを生成中...") : "AIコーチに解析させる"}
               </button>
               <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[9px] text-zinc-700"><Shield className="size-3 shrink-0" />{file || hasNotes ? "動画はクラウドへ直接送り、解析APIにはURLだけを渡します。長い試合は約40秒ごとに分け、Hobbyの制限内で一本にまとめます。" : "動画を追加するか、立ち回り・目的を8文字以上書いてください。"}</p>
             </div>
@@ -558,7 +581,7 @@ export default function Home() {
                 <p className="mt-7 text-lg font-semibold">
                   {chunkProgress
                     ? `区間 ${chunkProgress.done} / ${chunkProgress.total}`
-                    : file ? "試合を解析中" : "状況を分析中"}
+                    : file ? "試合を解析中（最大5分）" : "状況を分析中"}
                 </p>
                 <p className="mt-2 text-xs text-zinc-600">{progressLabel || (file ? "映像の立ち回りと撃ち合いを読み取っています" : "改善ポイントをコーチングに変換しています")}</p>
                 <Progress value={progress} className="mt-7 h-1.5 max-w-sm bg-white/[0.05] [&_[data-slot=progress-indicator]]:bg-gradient-to-r [&_[data-slot=progress-indicator]]:from-red-700 [&_[data-slot=progress-indicator]]:to-red-400" />

@@ -23,6 +23,15 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
+test("requestCoach times out even when fetch never rejects", async () => {
+  globalThis.fetch = async () => new Promise<Response>(() => undefined);
+
+  await assert.rejects(
+    () => requestCoach(sample, { timeoutMs: 40 }),
+    (error: unknown) => error instanceof Error && error.message === COACH_TIMEOUT_ERROR,
+  );
+});
+
 test("requestCoach times out a hanging coach POST with a Japanese error", async () => {
   globalThis.fetch = async (_url, init) =>
     new Promise<Response>((_resolve, reject) => {
