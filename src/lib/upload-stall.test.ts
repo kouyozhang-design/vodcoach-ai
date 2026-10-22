@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  BLOB_UPLOAD_INFLIGHT_STALL_MS,
   BLOB_UPLOAD_NETWORK_ERROR,
   BLOB_UPLOAD_STALL_ERROR,
   BLOB_UPLOAD_STALL_MS,
@@ -9,6 +10,7 @@ import {
   isUploadStalled,
   mapUploadFailure,
   shouldRetryBlobToken,
+  shouldStallUpload,
 } from "./upload-stall.ts";
 
 test("upload stall window is 70–90s and the error is Japanese", () => {
@@ -34,13 +36,25 @@ test("increasing loaded bytes resets the stall clock past a 90s wall", () => {
   assert.equal(isUploadStalled(started, afterFiveMinutes), true);
 });
 
-test("expired client tokens retry once, then map to a Japanese network error", () => {
+test("expired or unminted client tokens retry once, then map to a Japanese network error", () => {
   const expired = new Error("Vercel Blob: Client token has expired.");
+  const retrieve = new Error("Vercel Blob: Failed to  retrieve the client token");
   assert.equal(isBlobTokenError(expired), true);
+  assert.equal(isBlobTokenError(retrieve), true);
   assert.equal(shouldRetryBlobToken(expired, 1, BLOB_UPLOAD_TOKEN_ATTEMPTS), true);
   assert.equal(shouldRetryBlobToken(expired, 2, BLOB_UPLOAD_TOKEN_ATTEMPTS), false);
   assert.equal(isBlobTokenError(new Error("動画は80MB以下にしてください。")), false);
   assert.equal(mapUploadFailure(expired).message, BLOB_UPLOAD_NETWORK_ERROR);
+});
+
+test("in-flight parts do not idle-stall at 80s; only a long hang does", () => {
+  const started = 1_000_000;
+  assert.equal(shouldStallUpload({ lastActivityAt: started, inFlight: true, now: started + 80_000 }), false);
+  assert.equal(shouldStallUpload({ lastActivityAt: started, inFlight: false, now: started + 80_000 }), true);
+  assert.equal(
+    shouldStallUpload({ lastActivityAt: started, inFlight: true, now: started + BLOB_UPLOAD_INFLIGHT_STALL_MS }),
+    true,
+  );
 });
 
 test("stall abort wins over a generic AbortError", () => {

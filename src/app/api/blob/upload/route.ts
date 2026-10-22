@@ -31,6 +31,8 @@ export async function POST(request: Request) {
     return json({ error: BLOB_TOKEN_MISSING }, { status: 503 });
   }
 
+  // Token mint / upload-completed JSON only. Never accept the video body here
+  // (Vercel ~4.5MB function limit). Bytes go to the Blob API from the browser.
   let body: HandleUploadBody;
   try {
     body = (await request.json()) as HandleUploadBody;

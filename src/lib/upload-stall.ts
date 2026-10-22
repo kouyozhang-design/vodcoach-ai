@@ -1,5 +1,8 @@
-/** Error only when Blob bytes stop moving — not because a short wall clock passed. */
+/** Idle (no in-flight part): fail only when nothing started or finished. */
 export const BLOB_UPLOAD_STALL_MS = 80_000;
+
+/** Hung in-flight part. 5MB at ~10KB/s still fits; activity (loadstart/progress) resets this. */
+export const BLOB_UPLOAD_INFLIGHT_STALL_MS = 8 * 60 * 1000;
 
 export const BLOB_UPLOAD_STALL_ERROR = "動画のアップロードが進まなくなりました。もう一度お試しください。";
 
@@ -18,9 +21,18 @@ export function isUploadStalled(
   return now - lastProgressAt >= stallMs;
 }
 
+export function shouldStallUpload(state: {
+  lastActivityAt: number;
+  inFlight: boolean;
+  now: number;
+}) {
+  const limit = state.inFlight ? BLOB_UPLOAD_INFLIGHT_STALL_MS : BLOB_UPLOAD_STALL_MS;
+  return isUploadStalled(state.lastActivityAt, state.now, limit);
+}
+
 export function isBlobTokenError(reason: unknown) {
   const text = messageOf(reason);
-  return /client token has expired|token has expired|token expired|failed to generate (a )?client token/i.test(text);
+  return /client token has expired|token has expired|token expired|failed to\s+(generate a client token|retrieve the client token)/i.test(text);
 }
 
 export function shouldRetryBlobToken(reason: unknown, attempt: number, maxAttempts = BLOB_UPLOAD_TOKEN_ATTEMPTS) {
