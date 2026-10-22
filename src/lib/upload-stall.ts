@@ -1,7 +1,7 @@
 /** Idle (no in-flight part): fail only when nothing started or finished. */
 export const BLOB_UPLOAD_STALL_MS = 80_000;
 
-/** Hung in-flight part. 5MB at ~10KB/s still fits; activity (loadstart/progress) resets this. */
+/** Hung in-flight part. 5MB at ~10KB/s still fits; part start/complete resets this. */
 export const BLOB_UPLOAD_INFLIGHT_STALL_MS = 8 * 60 * 1000;
 
 export const BLOB_UPLOAD_STALL_ERROR = "動画のアップロードが進まなくなりました。もう一度お試しください。";
@@ -55,7 +55,7 @@ export function mapUploadFailure(
   if (isAbortish(reason)) {
     return new Error(BLOB_UPLOAD_NETWORK_ERROR);
   }
-  if (isBlobTokenError(reason) || isOpaqueBlobError(reason)) {
+  if (isBlobTokenError(reason) || isOpaqueBlobError(reason) || reason instanceof TypeError) {
     return new Error(BLOB_UPLOAD_NETWORK_ERROR);
   }
   if (reason instanceof Error && reason.message.trim()) {

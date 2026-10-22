@@ -1,3 +1,5 @@
+import { isPrivateBlobUrl } from "@/lib/blob";
+import { readableVideoUrl, readPrivateVideoBytes, sniffPrivateVideo } from "@/lib/blob-read";
 import { formatTimestamp, shiftTimestamp } from "@/lib/match-plan";
 import { mimeFromFileName } from "@/lib/video";
 import { looksLikeSlogan } from "./bar";
@@ -68,7 +70,8 @@ async function analyzeVideo(
 ) {
   const range = videoRange(input, mode);
   const { mimeType, size } = await sniffVideo(videoUrl);
-  const urlPart = videoFilePart(videoUrl, mimeType, range);
+  const fileUri = await readableVideoUrl(videoUrl);
+  const urlPart = videoFilePart(fileUri, mimeType, range);
   const allowFilesApi = mode === "clip" && !input.segmentOnly;
   const extras = frames && frames.length > 0 ? imageParts(frames) : [];
 
@@ -206,11 +209,19 @@ function retryDelayMs(attempt: number) {
 }
 
 async function uploadBlobToGeminiFiles(apiKey: string, videoUrl: string, mimeType: string) {
-  const videoResponse = await fetch(videoUrl, { method: "GET", redirect: "follow" });
-  if (!videoResponse.ok) throw new CoachProviderError(CONNECT_ERROR, "http");
-  const bytes = await videoResponse.arrayBuffer();
-  const resolvedMime =
-    headerMime(videoResponse.headers.get("content-type")) || mimeType || "video/mp4";
+  let bytes: ArrayBuffer;
+  let resolvedMime = mimeType || "video/mp4";
+  if (isPrivateBlobUrl(videoUrl)) {
+    const privateFile = await readPrivateVideoBytes(videoUrl);
+    if (!privateFile) throw new CoachProviderError(CONNECT_ERROR, "http");
+    bytes = privateFile.bytes;
+    resolvedMime = privateFile.mimeType || resolvedMime;
+  } else {
+    const videoResponse = await fetch(videoUrl, { method: "GET", redirect: "follow" });
+    if (!videoResponse.ok) throw new CoachProviderError(CONNECT_ERROR, "http");
+    bytes = await videoResponse.arrayBuffer();
+    resolvedMime = headerMime(videoResponse.headers.get("content-type")) || resolvedMime;
+  }
 
   const start = await fetch(FILES_START_URL, {
     method: "POST",
@@ -276,6 +287,13 @@ async function waitUntilActive(apiKey: string, fileName: string) {
 async function sniffVideo(videoUrl: string) {
   const fromName = mimeFromVideoUrl(videoUrl);
   try {
+    if (isPrivateBlobUrl(videoUrl)) {
+      const meta = await sniffPrivateVideo(videoUrl);
+      return {
+        mimeType: headerMime(meta.mimeType) || fromName,
+        size: meta.size > 0 ? meta.size : undefined,
+      };
+    }
     const response = await fetch(videoUrl, {
       method: "HEAD",
       redirect: "follow",

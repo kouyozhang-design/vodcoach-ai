@@ -45,6 +45,11 @@ test("expired or unminted client tokens retry once, then map to a Japanese netwo
   assert.equal(shouldRetryBlobToken(expired, 2, BLOB_UPLOAD_TOKEN_ATTEMPTS), false);
   assert.equal(isBlobTokenError(new Error("動画は80MB以下にしてください。")), false);
   assert.equal(mapUploadFailure(expired).message, BLOB_UPLOAD_NETWORK_ERROR);
+  assert.equal(
+    mapUploadFailure(new Error("Vercel Blob: Cannot use public access on a private store.")).message,
+    BLOB_UPLOAD_NETWORK_ERROR,
+  );
+  assert.equal(mapUploadFailure(new TypeError("Network request failed")).message, BLOB_UPLOAD_NETWORK_ERROR);
 });
 
 test("in-flight parts do not idle-stall at 80s; only a long hang does", () => {
