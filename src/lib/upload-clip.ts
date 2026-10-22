@@ -9,7 +9,13 @@ import {
   uploadLoadedBytes,
   uploadPercentage,
 } from "@/lib/blob-parts";
-import { normalizeCoachVideo } from "@/lib/video";
+import {
+  blobMpuPartHeaders,
+  blobMpuUrl,
+  readMpuPartEtag,
+  xhrPostBlob,
+} from "@/lib/blob-xhr";
+import { coachVideoContentType } from "@/lib/video";
 import {
   BLOB_UPLOAD_NETWORK_ERROR,
   BLOB_UPLOAD_STALL_ERROR,
@@ -33,6 +39,8 @@ export type UploadClipOptions = {
   onProgress?: (progress: UploadClipProgress) => void;
 };
 
+const PART_RETRIES = 3;
+
 export async function uploadClipToBlob(
   file: File,
   options: UploadClipOptions = {},
@@ -49,14 +57,14 @@ export async function uploadClipToBlob(
     throw new Error(status.error || BLOB_TOKEN_MISSING);
   }
 
-  const clip = normalizeCoachVideo(file);
-  const pathname = `coach-clips/${safeName(clip.name)}`;
+  const contentType = coachVideoContentType(file);
+  const pathname = `coach-clips/${safeName(file.name)}`;
 
   let lastError: unknown;
   for (let attempt = 1; attempt <= BLOB_UPLOAD_TOKEN_ATTEMPTS; attempt += 1) {
     throwIfAborted(signal);
     try {
-      return await uploadOnce(pathname, clip, { signal, onProgress });
+      return await uploadOnce(pathname, file, contentType, { signal, onProgress });
     } catch (reason) {
       lastError = reason;
       if (reason instanceof Error && reason.message === BLOB_UPLOAD_STALL_ERROR) {
@@ -77,6 +85,7 @@ export async function uploadClipToBlob(
 async function uploadOnce(
   pathname: string,
   clip: File,
+  contentType: string,
   options: UploadClipOptions,
 ): Promise<string> {
   const { signal, onProgress } = options;
@@ -107,12 +116,13 @@ async function uploadOnce(
     touch();
     report(0);
 
+    // Create/complete via SDK. Parts go over XHR so Safari reports loaded bytes
+    // (even when lengthComputable is false) and we can send x-content-length.
     // Do not pass onUploadProgress — Safari duplex/CORS drops those events.
-    // Do not use access public — live store is private.
     const uploader = await createMultipartUploader(pathname, {
       access: BLOB_ACCESS,
       token,
-      contentType: clip.type,
+      contentType,
       abortSignal: combined,
     });
     touch();
@@ -132,13 +142,31 @@ async function uploadOnce(
         touch();
         emit();
         try {
-          const body = clip.slice(plan.start, plan.end, clip.type || "application/octet-stream");
-          const part = await uploader.uploadPart(plan.partNumber, body);
+          const body = clip.slice(plan.start, plan.end, contentType || "application/octet-stream");
+          const text = await postPartWithRetry({
+            pathname,
+            token,
+            key: uploader.key,
+            uploadId: uploader.uploadId,
+            partNumber: plan.partNumber,
+            contentType,
+            access: BLOB_ACCESS,
+            body,
+            signal: combined,
+            onProgress: (loaded) => {
+              inflight.set(plan.partNumber, Math.min(size, loaded));
+              touch();
+              emit();
+            },
+            onActivity: touch,
+          });
+          const etag = readMpuPartEtag(safeJson(text));
+          if (!etag) throw new Error(BLOB_UPLOAD_NETWORK_ERROR);
           completed.set(plan.partNumber, size);
           inflight.delete(plan.partNumber);
           touch();
           emit();
-          return part;
+          return { etag, partNumber: plan.partNumber };
         } catch (reason) {
           inflight.delete(plan.partNumber);
           throw reason;
@@ -191,6 +219,63 @@ async function mintClientToken(pathname: string, signal?: AbortSignal) {
     throw new Error(payload.error || "Vercel Blob: Failed to retrieve the client token");
   }
   return payload.clientToken;
+}
+
+async function postPartWithRetry(input: {
+  pathname: string;
+  token: string;
+  key: string;
+  uploadId: string;
+  partNumber: number;
+  contentType?: string;
+  access: "public" | "private";
+  body: Blob;
+  signal?: AbortSignal;
+  onProgress: (loaded: number) => void;
+  onActivity: () => void;
+}) {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= PART_RETRIES; attempt += 1) {
+    throwIfAborted(input.signal);
+    try {
+      return await xhrPostBlob({
+        url: blobMpuUrl(input.pathname),
+        body: input.body,
+        headers: blobMpuPartHeaders({
+          token: input.token,
+          key: input.key,
+          uploadId: input.uploadId,
+          partNumber: input.partNumber,
+          contentType: input.contentType,
+          contentLength: input.body.size,
+          access: input.access,
+        }),
+        signal: input.signal,
+        onProgress: input.onProgress,
+        onActivity: input.onActivity,
+      });
+    } catch (reason) {
+      lastError = reason;
+      if (input.signal?.aborted || isAbortish(reason)) throw reason;
+      if (reason instanceof Error && reason.message === BLOB_UPLOAD_STALL_ERROR) throw reason;
+      if (attempt >= PART_RETRIES || !isRetryablePartError(reason)) throw reason;
+    }
+  }
+  throw lastError;
+}
+
+function isRetryablePartError(reason: unknown) {
+  if (reason instanceof TypeError) return true;
+  const text = reason instanceof Error ? reason.message : "";
+  return /upload part failed \((0|408|425|429|500|502|503|504)\)/i.test(text);
+}
+
+function safeJson(text: string) {
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return {};
+  }
 }
 
 async function readBlobStatus(signal?: AbortSignal): Promise<BlobStatus> {

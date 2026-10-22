@@ -1,7 +1,7 @@
 /** Idle (no in-flight part): fail only when nothing started or finished. */
 export const BLOB_UPLOAD_STALL_MS = 80_000;
 
-/** Hung in-flight part. 5MB at ~10KB/s still fits; part start/complete resets this. */
+/** Hung in-flight part. 5MB at ~10KB/s still fits; XHR loadstart/progress resets this. */
 export const BLOB_UPLOAD_INFLIGHT_STALL_MS = 8 * 60 * 1000;
 
 export const BLOB_UPLOAD_STALL_ERROR = "動画のアップロードが進まなくなりました。もう一度お試しください。";

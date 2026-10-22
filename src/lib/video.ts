@@ -31,9 +31,16 @@ export function mimeFromFileName(name: string) {
   return "";
 }
 
+/** Map a dropped File to a Blob-allowed Content-Type without copying bytes. */
+export function coachVideoContentType(file: { name?: string; type?: string }) {
+  const raw = (file.type ?? "").trim().toLowerCase().split(";")[0];
+  const type = raw || mimeFromFileName(file.name ?? "") || "video/quicktime";
+  if (type === "video/x-quicktime") return "video/quicktime";
+  if (type === "video/h265") return "video/hevc";
+  return type;
+}
+
 export function normalizeCoachVideo(file: File) {
-  const name = file.name?.trim() || "clip.mov";
-  const type = file.type?.trim() || mimeFromFileName(name) || "video/quicktime";
-  if (type === file.type && name === file.name) return file;
-  return new File([file], name, { type, lastModified: file.lastModified });
+  // Keep the original File. `new File([file])` copies tens of MB on Safari and can hang upload.
+  return file;
 }
