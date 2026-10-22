@@ -88,6 +88,10 @@ function matchProgressLabel(done: number, total: number) {
   return `解析中 ${done} / ${total}（${pct}%）`;
 }
 
+function uploadProgressLabel(percent: number) {
+  return `アップロード中 ${Math.round(percent)}%`;
+}
+
 export default function Home() {
   const [appMode, setAppMode] = useState<AppMode>("vod");
   const [file, setFile] = useState<File | null>(null);
@@ -101,6 +105,7 @@ export default function Home() {
   const [progress, setProgress] = useState(0);
   const [progressLabel, setProgressLabel] = useState("");
   const [chunkProgress, setChunkProgress] = useState<{ done: number; total: number } | null>(null);
+  const [uploadPercent, setUploadPercent] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [result, setResult] = useState<CoachResponse | null>(null);
   const safariDropOnly = useSyncExternalStore(subscribeNoop, getSafariDropOnly, () => true);
@@ -244,12 +249,15 @@ export default function Home() {
     setError("");
     setResult(null);
     setChunkProgress(null);
+    setUploadPercent(null);
     setProgress(4);
     setProgressLabel(file ? "動画を準備しています" : "ノートからプランを作っています");
     setStatus("analyzing");
-    const timer = window.setInterval(() => {
-      setProgress((current) => Math.min(current + Math.max(0.6, (88 - current) * 0.03), 88));
-    }, 240);
+    const startFakeProgress = () =>
+      window.setInterval(() => {
+        setProgress((current) => Math.min(current + Math.max(0.6, (88 - current) * 0.03), 88));
+      }, 240);
+    let timer = startFakeProgress();
 
     const coach = (body: Parameters<typeof requestCoach>[0], timeoutMs?: number) =>
       requestCoach(body, { signal: run.signal, timeoutMs });
@@ -268,8 +276,23 @@ export default function Home() {
       if (run.signal.aborted) throw new Error(MATCH_STALL_ERROR);
       touchProgress();
       const match = isLongMatch(duration);
+      window.clearInterval(timer);
+      setUploadPercent(0);
+      setProgress(0);
       setProgressLabel("動画をクラウドへ送っています");
-      const videoUrl = await uploadClipToBlob(file, run.signal);
+      const videoUrl = await uploadClipToBlob(file, {
+        signal: run.signal,
+        onProgress: ({ percentage }) => {
+          touchProgress();
+          const pct = Math.max(0, Math.min(100, Math.round(percentage)));
+          setUploadPercent(pct);
+          setProgress(pct);
+          setProgressLabel(uploadProgressLabel(pct));
+        },
+      });
+      setUploadPercent(null);
+      setProgress((current) => Math.max(current, 12));
+      timer = startFakeProgress();
       touchProgress();
 
       if (!match || duration == null) {
@@ -403,6 +426,7 @@ export default function Home() {
     runIdRef.current += 1;
     abortRef.current?.abort();
     setChunkProgress(null);
+    setUploadPercent(null);
     setError(message);
     setStatus("error");
   }
@@ -410,6 +434,7 @@ export default function Home() {
   function finishSuccess(runId: number, payload: CoachResponse) {
     if (cancelledRef.current || runIdRef.current !== runId) return;
     setChunkProgress(null);
+    setUploadPercent(null);
     setProgress(100);
     setResult(payload);
     window.setTimeout(() => {
@@ -564,7 +589,7 @@ export default function Home() {
                 disabled={!canSubmit}
                 className="mt-5 flex h-12 w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-red-600 to-red-500 text-sm font-semibold text-white shadow-[0_10px_35px_rgba(220,38,38,.2)] hover:from-red-500 hover:to-red-400 disabled:pointer-events-none disabled:opacity-70"
               >
-                {status === "analyzing" ? <LoaderCircle className="size-4 animate-spin" /> : <Sparkles className="size-4" />} {status === "analyzing" ? (chunkProgress ? `解析中 ${chunkProgress.done} / ${chunkProgress.total}` : file ? "試合を解析中" : "コーチングを生成中...") : "AIコーチに解析させる"}
+                {status === "analyzing" ? <LoaderCircle className="size-4 animate-spin" /> : <Sparkles className="size-4" />} {status === "analyzing" ? (chunkProgress ? `解析中 ${chunkProgress.done} / ${chunkProgress.total}` : uploadPercent != null ? uploadProgressLabel(uploadPercent) : file ? "試合を解析中" : "コーチングを生成中...") : "AIコーチに解析させる"}
               </button>
               <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[9px] text-zinc-700"><Shield className="size-3 shrink-0" />{file || hasNotes ? "動画はクラウドへ直接送り、解析APIにはURLだけを渡します。長い試合は約40秒ごとに分け、Hobbyの制限内で一本にまとめます。" : "動画を追加するか、立ち回り・目的を8文字以上書いてください。"}</p>
             </div>
@@ -589,12 +614,14 @@ export default function Home() {
                 <p className="mt-7 text-lg font-semibold">
                   {chunkProgress
                     ? matchProgressLabel(chunkProgress.done, chunkProgress.total)
-                    : file ? "試合を解析中" : "状況を分析中"}
+                    : uploadPercent != null
+                      ? uploadProgressLabel(uploadPercent)
+                      : file ? "試合を解析中" : "状況を分析中"}
                 </p>
                 <p className="mt-2 text-xs text-zinc-600">{progressLabel || (file ? "映像の立ち回りと撃ち合いを読み取っています" : "改善ポイントをコーチングに変換しています")}</p>
                 <Progress value={progress} className="mt-7 h-1.5 max-w-sm bg-white/[0.05] [&_[data-slot=progress-indicator]]:bg-gradient-to-r [&_[data-slot=progress-indicator]]:from-red-700 [&_[data-slot=progress-indicator]]:to-red-400" />
                 <div className="mt-3 flex w-full max-w-sm justify-between font-mono text-[9px] text-zinc-700">
-                  <span>{chunkProgress ? `CHUNK ${chunkProgress.done}/${chunkProgress.total}` : file ? "MATCH_SCAN" : "NOTES_PLAN"}</span>
+                  <span>{chunkProgress ? `CHUNK ${chunkProgress.done}/${chunkProgress.total}` : uploadPercent != null ? "UPLOAD" : file ? "MATCH_SCAN" : "NOTES_PLAN"}</span>
                   <span>{Math.round(progress)}%</span>
                 </div>
               </div>

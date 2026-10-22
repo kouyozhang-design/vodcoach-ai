@@ -3,19 +3,40 @@
 import { upload } from "@vercel/blob/client";
 import { BLOB_TOKEN_MISSING, MAX_CLIP_BYTES } from "@/lib/blob";
 import { normalizeCoachVideo } from "@/lib/video";
+import {
+  BLOB_UPLOAD_NETWORK_ERROR,
+  BLOB_UPLOAD_STALL_ERROR,
+  BLOB_UPLOAD_STALL_MS,
+  BLOB_UPLOAD_TOKEN_ATTEMPTS,
+  isAbortish,
+  isUploadStalled,
+  mapUploadFailure,
+  shouldRetryBlobToken,
+} from "@/lib/upload-stall";
 
 type BlobStatus = { configured: boolean; error?: string };
 
-const BLOB_UPLOAD_TIMEOUT_MS = 90_000;
-const BLOB_UPLOAD_TIMEOUT_ERROR = "動画のアップロードが時間内に終わりませんでした。もう一度お試しください。";
+export type UploadClipProgress = {
+  loaded: number;
+  total: number;
+  percentage: number;
+};
 
-export async function uploadClipToBlob(file: File, signal?: AbortSignal): Promise<string> {
+export type UploadClipOptions = {
+  signal?: AbortSignal;
+  onProgress?: (progress: UploadClipProgress) => void;
+};
+
+export async function uploadClipToBlob(
+  file: File,
+  options: UploadClipOptions = {},
+): Promise<string> {
+  const { signal, onProgress } = options;
+
   if (file.size > MAX_CLIP_BYTES) {
     throw new Error("動画は80MB以下にしてください。");
   }
-  if (signal?.aborted) {
-    throw new Error(BLOB_UPLOAD_TIMEOUT_ERROR);
-  }
+  throwIfAborted(signal);
 
   const status = await readBlobStatus(signal);
   if (!status.configured) {
@@ -24,20 +45,74 @@ export async function uploadClipToBlob(file: File, signal?: AbortSignal): Promis
 
   const clip = normalizeCoachVideo(file);
   const pathname = `coach-clips/${safeName(clip.name)}`;
+
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= BLOB_UPLOAD_TOKEN_ATTEMPTS; attempt += 1) {
+    throwIfAborted(signal);
+    try {
+      return await uploadOnce(pathname, clip, { signal, onProgress });
+    } catch (reason) {
+      lastError = reason;
+      if (reason instanceof Error && reason.message === BLOB_UPLOAD_STALL_ERROR) {
+        throw reason;
+      }
+      if (signal?.aborted) {
+        throw mapUploadFailure(reason, { parent: signal });
+      }
+      if (shouldRetryBlobToken(reason, attempt)) {
+        continue;
+      }
+      throw mapUploadFailure(reason, { parent: signal });
+    }
+  }
+  throw mapUploadFailure(lastError);
+}
+
+async function uploadOnce(
+  pathname: string,
+  clip: File,
+  options: UploadClipOptions,
+): Promise<string> {
+  const { signal, onProgress } = options;
   const mintedAt = Date.now();
-  // Never pass clientToken — each upload must mint a fresh handleUpload JWT.
-  const blob = await withAbort(
-    upload(pathname, clip, {
+  let lastLoaded = -1;
+  let lastPercentage = -1;
+  let lastProgressAt = Date.now();
+
+  const stall = new AbortController();
+  const combined = combineSignals(signal, stall.signal);
+
+  const timer = setInterval(() => {
+    if (!isUploadStalled(lastProgressAt, Date.now(), BLOB_UPLOAD_STALL_MS)) return;
+    stall.abort(new Error(BLOB_UPLOAD_STALL_ERROR));
+  }, 1_000);
+
+  try {
+    // Never pass clientToken — each attempt must mint a fresh handleUpload JWT.
+    const blob = await upload(pathname, clip, {
       access: "public",
       handleUploadUrl: `/api/blob/upload?n=${mintedAt}`,
       multipart: true,
       clientPayload: String(mintedAt),
-    }),
-    signal,
-    BLOB_UPLOAD_TIMEOUT_MS,
-    BLOB_UPLOAD_TIMEOUT_ERROR,
-  );
-  return blob.url;
+      abortSignal: combined,
+      onUploadProgress({ loaded, total, percentage }) {
+        if (loaded > lastLoaded || percentage > lastPercentage) {
+          lastLoaded = loaded;
+          lastPercentage = percentage;
+          lastProgressAt = Date.now();
+        }
+        onProgress?.({ loaded, total, percentage });
+      },
+    });
+    return blob.url;
+  } catch (reason) {
+    if (stall.signal.aborted || signal?.aborted) {
+      throw mapUploadFailure(reason, { parent: signal, stall: stall.signal });
+    }
+    throw reason;
+  } finally {
+    clearInterval(timer);
+  }
 }
 
 async function readBlobStatus(signal?: AbortSignal): Promise<BlobStatus> {
@@ -54,44 +129,35 @@ async function readBlobStatus(signal?: AbortSignal): Promise<BlobStatus> {
     }
     return { configured: Boolean(payload.configured), error: payload.error };
   } catch (reason) {
-    if (signal?.aborted) throw new Error(BLOB_UPLOAD_TIMEOUT_ERROR);
-    if (reason instanceof Error && reason.name === "AbortError") {
-      throw new Error(BLOB_UPLOAD_TIMEOUT_ERROR);
-    }
+    throwIfAborted(signal, reason);
     return { configured: false, error: BLOB_TOKEN_MISSING };
   }
 }
 
-function withAbort<T>(
-  promise: Promise<T>,
-  signal: AbortSignal | undefined,
-  timeoutMs: number,
-  message: string,
-): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(new Error(message));
-      return;
-    }
-    const timer = setTimeout(() => reject(new Error(message)), timeoutMs);
-    const onAbort = () => {
-      clearTimeout(timer);
-      reject(new Error(message));
-    };
-    signal?.addEventListener("abort", onAbort, { once: true });
-    promise.then(
-      (value) => {
-        clearTimeout(timer);
-        signal?.removeEventListener("abort", onAbort);
-        resolve(value);
-      },
-      (error) => {
-        clearTimeout(timer);
-        signal?.removeEventListener("abort", onAbort);
-        reject(error);
-      },
-    );
-  });
+function throwIfAborted(signal?: AbortSignal, reason?: unknown): void {
+  if (signal?.aborted || isAbortish(reason)) {
+    throw mapUploadFailure(reason, { parent: signal });
+  }
+}
+
+function combineSignals(parent?: AbortSignal, stall?: AbortSignal) {
+  const controller = new AbortController();
+  const abort = () => {
+    if (controller.signal.aborted) return;
+    const reason = stall?.aborted
+      ? stall.reason
+      : parent?.aborted
+        ? parent.reason
+        : new Error(BLOB_UPLOAD_NETWORK_ERROR);
+    controller.abort(reason);
+  };
+  if (parent?.aborted || stall?.aborted) {
+    abort();
+    return controller.signal;
+  }
+  parent?.addEventListener("abort", abort, { once: true });
+  stall?.addEventListener("abort", abort, { once: true });
+  return controller.signal;
 }
 
 function safeName(name: string) {
