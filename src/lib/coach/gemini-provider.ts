@@ -2,6 +2,7 @@ import { isPrivateBlobUrl } from "@/lib/blob";
 import { readableVideoUrl, readPrivateVideoBytes, sniffPrivateVideo } from "@/lib/blob-read";
 import { formatTimestamp } from "@/lib/match-plan";
 import { mimeFromFileName } from "@/lib/video";
+import { resolveCoachLanguage, type CoachLanguage } from "../coach-language";
 import { spokenLineForCue, parseNextMove, parseSpeakMoment } from "../live-speech";
 import { insightsFromParsed } from "./insight-tabs";
 import { buildUserText, systemPrompt } from "./prompts";
@@ -47,17 +48,18 @@ class GeminiVideoCoachProvider implements VideoCoachProvider {
     const videoUrl = input.videoUrl?.trim();
     const frames = input.frames ?? [];
     const hasVideo = Boolean(videoUrl);
+    const language = resolveCoachLanguage(input);
     const userText = buildUserText(input, mode, hasVideo, frames.length > 0);
 
     let parsed: Record<string, unknown>;
     if (mode === "match-merge") {
-      parsed = await generateCoachJson(key, [{ text: userText }], mode);
+      parsed = await generateCoachJson(key, [{ text: userText }], mode, language);
     } else if (hasVideo && videoUrl) {
       parsed = await analyzeVideo(key, videoUrl, userText, input, mode, frames);
     } else if (frames.length > 0) {
-      parsed = await generateCoachJson(key, [{ text: userText }, ...imageParts(frames)], mode);
+      parsed = await generateCoachJson(key, [{ text: userText }, ...imageParts(frames)], mode, language);
     } else {
-      parsed = await generateCoachJson(key, [{ text: userText }], mode);
+      parsed = await generateCoachJson(key, [{ text: userText }], mode, language);
     }
 
     return toCoachResponse(parsed, input, mode);
@@ -83,7 +85,7 @@ async function analyzeVideo(
   if (tryUrl) {
     try {
       // Blob URL path: video only. JPEG backups stay off this request so HUD/legend reads stay on the clip.
-      return await generateCoachJson(apiKey, [{ text: userText }, urlPart], mode);
+      return await generateCoachJson(apiKey, [{ text: userText }, urlPart], mode, resolveCoachLanguage(input));
     } catch (error) {
       if (error instanceof CoachProviderError && (error.kind === "parse" || error.kind === "rate-limit")) {
         throw error;
@@ -91,20 +93,20 @@ async function analyzeVideo(
       const canFallback = error instanceof CoachProviderError ? error.kind === "http" : true;
       if (!canFallback) throw error;
       if (extras.length > 0) {
-        return generateCoachJson(apiKey, [{ text: userText }, ...extras], mode);
+        return generateCoachJson(apiKey, [{ text: userText }, ...extras], mode, resolveCoachLanguage(input));
       }
       if (!allowFilesApi) throw error;
     }
   }
 
   if (!allowFilesApi) {
-    if (extras.length > 0) return generateCoachJson(apiKey, [{ text: userText }, ...extras], mode);
+    if (extras.length > 0) return generateCoachJson(apiKey, [{ text: userText }, ...extras], mode, resolveCoachLanguage(input));
     throw new CoachProviderError(CONNECT_ERROR, "http");
   }
 
   const uploaded = await uploadBlobToGeminiFiles(apiKey, videoUrl, mimeType);
   const filePart = videoFilePart(uploaded.uri, uploaded.mimeType || mimeType, range);
-  return generateCoachJson(apiKey, [{ text: userText }, filePart], mode);
+  return generateCoachJson(apiKey, [{ text: userText }, filePart], mode, resolveCoachLanguage(input));
 }
 
 function videoRange(input: CoachRequest, mode: CoachMode) {
@@ -150,9 +152,9 @@ function inlineJpeg(dataUrl: string): GeminiPart | null {
 
 const MAX_GENERATE_ATTEMPTS = 3;
 
-async function generateCoachJson(apiKey: string, parts: GeminiPart[], mode: CoachMode) {
+async function generateCoachJson(apiKey: string, parts: GeminiPart[], mode: CoachMode, language: CoachLanguage) {
   const body = JSON.stringify({
-    system_instruction: { parts: [{ text: systemPrompt(mode) }] },
+    system_instruction: { parts: [{ text: systemPrompt(mode, language) }] },
     contents: [{ role: "user", parts }],
     generationConfig: {
       temperature: mode === "live" ? 0.25 : 0.35,

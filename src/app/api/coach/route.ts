@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { parseCoachLanguage } from "@/lib/coach-language";
 import { parseInsightTab } from "@/lib/coach/insight-tabs";
 import { getCoachProvider } from "@/lib/coach/provider";
 import { parseRotation } from "@/lib/coach/rotation";
@@ -35,6 +36,7 @@ type ParsedCoachBody = {
   segmentOnly?: boolean;
   chunkReports?: CoachChunkReport[];
   recentCues?: string[];
+  language?: "ja" | "en";
 };
 
 export async function POST(request: Request) {
@@ -76,7 +78,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const payload: CoachRequest = { game, rank, character, concern, frames, mode };
+    const payload: CoachRequest = { game, rank, character, concern, frames, mode, language: parsed.language };
     if (videoUrl) payload.videoUrl = videoUrl;
     if (parsed.startOffsetSec != null) payload.startOffsetSec = parsed.startOffsetSec;
     if (parsed.endOffsetSec != null) payload.endOffsetSec = parsed.endOffsetSec;
@@ -143,6 +145,7 @@ async function readCoachBody(request: Request): Promise<ParsedCoachBody | NextRe
     segmentOnly: body.segmentOnly === true,
     chunkReports,
     recentCues,
+    language: parseCoachLanguage(body.language),
   };
 }
 

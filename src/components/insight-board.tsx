@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { InsightCard } from "@/components/insight-card";
+import { insightTabLabel, type CoachLanguage } from "@/lib/coach-language";
 import {
-  INSIGHT_TAB_LABELS,
   groupInsightsByTab,
   shouldShowInsightTabs,
   usedInsightTabs,
@@ -15,9 +15,11 @@ type BoardTab = "all" | InsightTabId;
 export function InsightBoard({
   insights,
   instant = false,
+  language = "ja",
 }: {
   insights: CoachInsight[];
   instant?: boolean;
+  language?: CoachLanguage;
 }) {
   const [tab, setTab] = useState<BoardTab>("all");
   const groups = useMemo(() => groupInsightsByTab(insights), [insights]);
@@ -32,12 +34,12 @@ export function InsightBoard({
       {showTabs && (
         <div
           role="tablist"
-          aria-label="指摘の種類"
+          aria-label={language === "en" ? "Insight types" : "指摘の種類"}
           className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           <TabPill
             id="all"
-            label="すべて"
+            label={language === "en" ? "All" : "すべて"}
             count={insights.length}
             selected={active === "all"}
             onSelect={() => setTab("all")}
@@ -46,7 +48,7 @@ export function InsightBoard({
             <TabPill
               key={id}
               id={id}
-              label={INSIGHT_TAB_LABELS[id]}
+              label={insightTabLabel(id, language)}
               count={groups[id].length}
               selected={active === id}
               onSelect={() => setTab(id)}
@@ -61,6 +63,7 @@ export function InsightBoard({
             insight={insight}
             index={index}
             instant={instant}
+            language={language}
           />
         ))}
       </div>

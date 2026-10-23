@@ -1,3 +1,4 @@
+import type { CoachLanguage } from "../coach-language.ts";
 import type { GameId } from "@/lib/games";
 
 /** Legacy clip ids. New reports use free ids plus `tab`. */
@@ -58,6 +59,8 @@ export type CoachRequest = {
   segmentOnly?: boolean;
   chunkReports?: CoachChunkReport[];
   recentCues?: string[];
+  /** ja default. English when the user picks it. */
+  language?: CoachLanguage;
 };
 
 export type CoachChunkReport = {
@@ -82,7 +85,7 @@ export type CoachResponse = {
   truncated?: boolean;
   shouldSpeak?: boolean;
   skipReason?: string;
-  /** Short Japanese line for Web Speech. Live product; cards are not. */
+  /** Short TTS line in the selected language. Live product; cards are not. */
   spokenLine?: string;
   speakMoment?: LiveSpeakMoment;
   /** True when a recon / survey beacon was used before this window. */

@@ -9,6 +9,12 @@ import {
 } from "lucide-react";
 import { InsightBoard } from "@/components/insight-board";
 import { LiveSession } from "@/components/live-session";
+import {
+  DEFAULT_COACH_LANGUAGE,
+  readStoredLanguage,
+  writeStoredLanguage,
+  type CoachLanguage,
+} from "@/lib/coach-language";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -53,6 +59,20 @@ function subscribeNoop() {
 
 function getSafariDropOnly() {
   return isSafariBrowser();
+}
+
+function subscribeLanguage(onStoreChange: () => void) {
+  window.addEventListener("storage", onStoreChange);
+  window.addEventListener("vodcoach-language", onStoreChange);
+  return () => {
+    window.removeEventListener("storage", onStoreChange);
+    window.removeEventListener("vodcoach-language", onStoreChange);
+  };
+}
+
+function changeLanguage(next: CoachLanguage) {
+  writeStoredLanguage(next);
+  window.dispatchEvent(new Event("vodcoach-language"));
 }
 
 function SelectField({
@@ -109,6 +129,7 @@ export default function Home() {
   const [error, setError] = useState("");
   const [result, setResult] = useState<CoachResponse | null>(null);
   const safariDropOnly = useSyncExternalStore(subscribeNoop, getSafariDropOnly, () => true);
+  const language = useSyncExternalStore(subscribeLanguage, readStoredLanguage, () => DEFAULT_COACH_LANGUAGE);
   const urlRef = useRef("");
   const videoRef = useRef<HTMLVideoElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -264,7 +285,7 @@ export default function Home() {
 
     try {
       const trimmedConcern = concern.trim();
-      const base = { game, rank, character, concern: trimmedConcern };
+      const base = { game, rank, character, concern: trimmedConcern, language };
       if (!file) {
         const payload = await coach({ ...base, mode: "clip" });
         finishSuccess(runId, payload);
@@ -463,6 +484,30 @@ export default function Home() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <div
+              role="radiogroup"
+              aria-label="Language"
+              className="inline-flex rounded-full border border-white/[0.08] bg-white/[0.03] p-0.5"
+            >
+              <button
+                type="button"
+                role="radio"
+                aria-checked={language === "ja"}
+                onClick={() => changeLanguage("ja")}
+                className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${language === "ja" ? "bg-red-600 text-white" : "text-zinc-400 hover:text-white"}`}
+              >
+                日本語
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={language === "en"}
+                onClick={() => changeLanguage("en")}
+                className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${language === "en" ? "bg-red-600 text-white" : "text-zinc-400 hover:text-white"}`}
+              >
+                English
+              </button>
+            </div>
             <Badge className="border border-red-500/15 bg-red-500/10 text-[10px] text-red-300">
               <span className="mr-1.5 size-1.5 animate-pulse rounded-full bg-red-400" />Analyzer online
             </Badge>
@@ -517,7 +562,7 @@ export default function Home() {
                 <Textarea value={concern} onChange={(event) => setConcern(event.target.value.slice(0, 240))} className="min-h-11 resize-none border-white/[0.08] bg-white/[0.035] px-3.5 py-2.5 text-sm leading-5 text-zinc-200 placeholder:text-zinc-700 focus-visible:border-red-500/60 focus-visible:ring-red-500/10" placeholder="今意識したいこと（任意）" />
               </label>
             </div>
-            <LiveSession game={game} rank={rank} character={character} concern={concern} />
+            <LiveSession game={game} rank={rank} character={character} concern={concern} language={language} />
           </>
         )}
 
@@ -640,7 +685,9 @@ export default function Home() {
                   <p className="text-sm leading-6 text-zinc-300">{result.summary}</p>
                   {result.rotationStory ? (
                     <div className="mt-5 rounded-2xl border border-white/[0.07] bg-white/[0.022] p-4">
-                      <p className="text-[9px] font-semibold uppercase tracking-wider text-red-400">試合全体の回転</p>
+                      <p className="text-[9px] font-semibold uppercase tracking-wider text-red-400">
+                        {language === "en" ? "Match rotation" : "試合全体の回転"}
+                      </p>
                       <p className="mt-2 text-sm leading-6 text-zinc-300">{result.rotationStory}</p>
                     </div>
                   ) : null}
@@ -653,6 +700,7 @@ export default function Home() {
                       key={result.analysisId}
                       insights={result.insights}
                       instant={insightInstant}
+                      language={language}
                     />
                   )}
                 </div>

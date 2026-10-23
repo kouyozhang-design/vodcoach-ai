@@ -18,15 +18,14 @@ import {
   liveCaptureErrorMessage,
   startDisplayCapture,
 } from "@/lib/live-capture";
-import { canUseSpeech, cancelSpeech, speakJapanese, unlockSpeech } from "@/lib/live-speech";
+import { liveChrome, type CoachLanguage } from "@/lib/coach-language";
+import { canUseSpeech, cancelSpeech, speakCoachLine, unlockSpeech } from "@/lib/live-speech";
 import type { GameId } from "@/lib/games";
 
 const ANTI_CHEAT_COPY =
   "VALORANTのVanguardなど、チート対策が画面キャプチャをブロックすると真っ黒になるか、共有自体が失敗します。その環境ではライブコーチは動きません。";
 const WINDOWED_COPY =
   "ゲームはフルスクリーン専有ではなく、ボーダーレスまたはウィンドウ表示にしてください。コーチングは声です。ゲーム画面の上には何も描きません。このタブを見なくても大丈夫です。";
-const GESTURE_COPY =
-  "音声を出すには、下のボタンを押してください。ブラウザは操作なしでは話しません。";
 
 type LiveStatus = "idle" | "capturing" | "coaching" | "error";
 
@@ -35,11 +34,13 @@ export function LiveSession({
   rank,
   character,
   concern,
+  language = "ja",
 }: {
   game: GameId;
   rank: string;
   character: string;
   concern: string;
+  language?: CoachLanguage;
 }) {
   const [status, setStatus] = useState<LiveStatus>("idle");
   const [error, setError] = useState("");
@@ -59,10 +60,11 @@ export function LiveSession({
   const recentPrints = useRef<string[]>([]);
   const recentLabels = useRef<string[]>([]);
   const readOnceRef = useRef<() => Promise<void>>(async () => undefined);
-  const configRef = useRef({ game, rank, character, concern });
+  const configRef = useRef({ game, rank, character, concern, language });
   const captureOk = useSyncExternalStore(() => () => undefined, canCaptureDisplay, () => false);
   const speechOk = useSyncExternalStore(() => () => undefined, canUseSpeech, () => false);
-  configRef.current = { game, rank, character, concern };
+  configRef.current = { game, rank, character, concern, language };
+  const chrome = liveChrome(language);
 
   useEffect(() => {
     return () => {
@@ -94,10 +96,14 @@ export function LiveSession({
       setStatus("error");
       return;
     }
-    const unlocked = unlockSpeech();
+    const unlocked = unlockSpeech(configRef.current.language);
     setAudioUnlocked(unlocked || canUseSpeech());
     if (!canUseSpeech()) {
-      setWarning("このブラウザは音声合成に対応していません。Chrome または Edge で開くと、日本語で話せます。");
+      setWarning(
+        language === "en"
+          ? "This browser cannot speak. Open Chrome or Edge for English TTS."
+          : "このブラウザは音声合成に対応していません。Chrome または Edge で開くと、日本語で話せます。",
+      );
     }
     try {
       const stream = await startDisplayCapture();
@@ -139,7 +145,7 @@ export function LiveSession({
       setSpeaking(false);
       return;
     }
-    const started = speakJapanese(line, {
+    const started = speakCoachLine(line, configRef.current.language, {
       onstart: () => {
         if (!cancelled.current) setSpeaking(true);
       },
@@ -195,6 +201,7 @@ export function LiveSession({
           concern: input.concern.trim() || `${input.rank}の${input.character}として今の画面の次の動きを教えてください`,
           frames,
           mode: "live",
+          language: input.language,
           recentCues: recentLabels.current,
         },
         { signal: run.signal },
@@ -271,7 +278,7 @@ export function LiveSession({
           <div className="mt-4 space-y-2 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 text-[11px] leading-5 text-zinc-500">
             <p>{WINDOWED_COPY}</p>
             <p>{ANTI_CHEAT_COPY}</p>
-            <p>{GESTURE_COPY}</p>
+            <p>{chrome.gesture}</p>
           </div>
 
           {error && (
@@ -295,7 +302,7 @@ export function LiveSession({
                 className="h-12 flex-1 rounded-xl bg-white text-black hover:bg-zinc-200"
               >
                 <Square className="size-4" />
-                共有を止める
+                {chrome.stopShare}
               </Button>
             ) : (
               <Button
@@ -304,7 +311,7 @@ export function LiveSession({
                 className="h-12 flex-1 rounded-xl bg-gradient-to-r from-red-600 to-red-500 text-white hover:from-red-500 hover:to-red-400"
               >
                 <Volume2 className="size-4" />
-                画面共有して音声を開始
+                {chrome.startShare}
               </Button>
             )}
           </div>
@@ -339,14 +346,14 @@ export function LiveSession({
           <div className="flex min-h-[520px] flex-col items-center justify-center px-6 text-center sm:min-h-[620px]">
             <Radio className={`size-8 text-red-400 ${speaking || status === "coaching" ? "animate-pulse" : ""}`} />
             <p className="mt-6 text-lg font-semibold">
-              {speaking ? "いま話しています" : watching || sharing ? "注視中" : "音声コーチ"}
+              {speaking ? chrome.speakingNow : watching || sharing ? chrome.watching : chrome.voiceCoach}
             </p>
             <p className="mt-2 max-w-sm text-xs leading-5 text-zinc-600">
               {speaking
-                ? "試合から目を離さないでください。声だけ拾えばいいです。"
+                ? chrome.keepEyesOnGame
                 : status === "coaching"
-                  ? "画面を読んでいます。撃ち合いの最中は、短い一言以外は黙ります。"
-                  : "膠着の詰めと、戦闘後のレビューだけ話します。"}
+                  ? chrome.stayQuietMidFight
+                  : chrome.onlyPostFight}
             </p>
             {lastLine ? (
               <p className="mt-8 max-w-md text-sm leading-6 text-zinc-200" aria-live="polite">

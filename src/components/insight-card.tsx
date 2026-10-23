@@ -2,10 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { Crosshair, Flag, Map, ScanLine, Zap } from "lucide-react";
-import {
-  INSIGHT_TAB_LABELS,
-  resolveInsightTab,
-} from "@/lib/coach/insight-tabs";
+import { insightTabLabel, type CoachLanguage } from "@/lib/coach-language";
+import { resolveInsightTab } from "@/lib/coach/insight-tabs";
 import type { CoachInsight, InsightTabId } from "@/lib/coach/types";
 
 const tabIcons: Record<InsightTabId, typeof Crosshair> = {
@@ -49,10 +47,12 @@ export function InsightCard({
   insight,
   index,
   instant = false,
+  language = "ja",
 }: {
   insight: CoachInsight;
   index: number;
   instant?: boolean;
+  language?: CoachLanguage;
 }) {
   const tab = resolveInsightTab(insight);
   const Icon = tabIcons[tab];
@@ -67,7 +67,7 @@ export function InsightCard({
         </div>
         <div className="flex min-w-0 flex-col items-end gap-1">
           <span className="rounded-full border border-white/[0.06] px-2 py-0.5 text-[9px] text-zinc-500">
-            {INSIGHT_TAB_LABELS[tab]}
+            {insightTabLabel(tab, language)}
           </span>
           <span className="font-mono text-[9px] text-zinc-700">{insight.timestamp ?? `0${index + 1}`}</span>
         </div>

@@ -1,0 +1,27 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import {
+  insightTabLabel,
+  languageInstruction,
+  liveChrome,
+  parseCoachLanguage,
+  speechLocale,
+} from "./coach-language.ts";
+
+test("language defaults to Japanese", () => {
+  assert.equal(parseCoachLanguage(undefined), "ja");
+  assert.equal(parseCoachLanguage("日本語"), "ja");
+  assert.equal(parseCoachLanguage("en"), "en");
+  assert.equal(parseCoachLanguage("english"), "en");
+  assert.equal(speechLocale("ja"), "ja-JP");
+  assert.equal(speechLocale("en"), "en-US");
+});
+
+test("prompts and cheap chrome switch with language", () => {
+  assert.match(languageInstruction("ja"), /日本語/);
+  assert.match(languageInstruction("en"), /English/);
+  assert.equal(insightTabLabel("rotation", "ja"), "立ち回り/回転");
+  assert.equal(insightTabLabel("rotation", "en"), "Pathing / rotate");
+  assert.equal(liveChrome("ja").speakingNow, "いま話しています");
+  assert.equal(liveChrome("en").speakingNow, "Speaking now");
+});

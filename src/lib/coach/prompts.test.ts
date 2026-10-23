@@ -115,6 +115,15 @@ test("profile and user text wire game rank character concern on every mode", () 
   }
 });
 
+test("english system prompt asks for English user-facing strings", () => {
+  const prompt = systemPrompt("live", "en");
+  assert.match(prompt, /English/);
+  assert.match(prompt, /spokenLine/);
+  assert.match(prompt, /調査ビーコン/);
+  const clip = systemPrompt("clip", "en");
+  assert.match(clip, /English/);
+});
+
 test("live user text includes recent cues for dedupe", () => {
   const text = buildUserText(
     { ...sample, mode: "live", recentCues: ["岩の左端へ戻す: 2射線が開いている"] },

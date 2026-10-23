@@ -7,7 +7,9 @@ import {
   looksLikeSurveyBeacon,
   parseNextMove,
   parseSpeakMoment,
+  pickEnglishVoice,
   pickJapaneseVoice,
+  pickVoiceForLanguage,
   spokenLineForCue,
   spokenLineUsesScan,
 } from "./live-speech.ts";
@@ -18,6 +20,16 @@ test("pickJapaneseVoice prefers a ja voice", () => {
     { lang: "ja-JP", name: "Kyoko" },
   ]);
   assert.equal(picked?.name, "Kyoko");
+});
+
+test("English TTS picks an English voice", () => {
+  const voices = [
+    { lang: "ja-JP", name: "Kyoko" },
+    { lang: "en-US", name: "Samantha" },
+  ];
+  assert.equal(pickEnglishVoice(voices)?.name, "Samantha");
+  assert.equal(pickVoiceForLanguage(voices, "en")?.name, "Samantha");
+  assert.equal(pickVoiceForLanguage(voices, "ja")?.name, "Kyoko");
 });
 
 test("mid-fight lecture is rejected, short spray call is kept", () => {
@@ -61,4 +73,8 @@ test("survey beacon spoken line must use scan, zone, time, and a next move", () 
     true,
   );
   assert.equal(spokenLineUsesScan("エイムを意識して落ち着いて"), false);
+  assert.equal(
+    spokenLineUsesScan("Scan shows two squads west. Ring 4, 40 seconds left. Third-party now."),
+    true,
+  );
 });

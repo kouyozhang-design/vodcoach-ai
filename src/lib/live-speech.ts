@@ -1,3 +1,4 @@
+import { speechLocale, type CoachLanguage } from "./coach-language.ts";
 import type { CoachInsight, CoachResponse, LiveNextMove, LiveSpeakMoment } from "./coach/types.ts";
 import { LIVE_NEXT_MOVES, LIVE_SPEAK_MOMENTS } from "./coach/types.ts";
 
@@ -23,10 +24,10 @@ export function looksLikeSurveyBeacon(text: string) {
 }
 
 export function spokenLineUsesScan(line: string) {
-  const hasEnemy = /敵|スキャン|ビーコン|ピン|位置|隊/.test(line);
-  const hasZone = /アンチ|ゾーン|リング/.test(line);
-  const hasTime = /残り|秒|分/.test(line);
-  const hasMove = /ローテ|回転|待て|ホールド|漁夫|第三者|切れ|離脱|セット|構え|押し|拡張/.test(line);
+  const hasEnemy = /敵|スキャン|ビーコン|ピン|位置|隊|enemy|scan|beacon|squad/i.test(line);
+  const hasZone = /アンチ|ゾーン|リング|zone|ring/i.test(line);
+  const hasTime = /残り|秒|分|left|sec|min/i.test(line);
+  const hasMove = /ローテ|回転|待て|ホールド|漁夫|第三者|切れ|離脱|セット|構え|押し|拡張|rotate|hold|third|disengage|setup|push/i.test(line);
   return hasEnemy && hasZone && hasTime && hasMove;
 }
 
@@ -97,17 +98,34 @@ export function pickJapaneseVoice(voices: Array<Pick<SpeechSynthesisVoice, "lang
   );
 }
 
+export function pickEnglishVoice(voices: Array<Pick<SpeechSynthesisVoice, "lang" | "name">>) {
+  const en = voices.filter((voice) => /^en\b/i.test(voice.lang));
+  return (
+    en.find((voice) => /google|samantha|daniel|alex|siri|aria|jenny/i.test(voice.name)) ??
+    en.find((voice) => /^en-US\b/i.test(voice.lang)) ??
+    en[0] ??
+    null
+  );
+}
+
+export function pickVoiceForLanguage(
+  voices: Array<Pick<SpeechSynthesisVoice, "lang" | "name">>,
+  language: CoachLanguage,
+) {
+  return language === "en" ? pickEnglishVoice(voices) : pickJapaneseVoice(voices);
+}
+
 /** Browsers block TTS until a click/tap. Call this in the same gesture as 画面共有. */
-export function unlockSpeech() {
+export function unlockSpeech(language: CoachLanguage = "ja") {
   const api = synth();
   if (!api || typeof SpeechSynthesisUtterance === "undefined") return false;
   try {
     api.cancel();
-    const warm = new SpeechSynthesisUtterance("。");
-    warm.lang = "ja-JP";
+    const warm = new SpeechSynthesisUtterance(language === "en" ? "." : "。");
+    warm.lang = speechLocale(language);
     warm.volume = 0.01;
     warm.rate = 2;
-    const voice = pickJapaneseVoice(api.getVoices());
+    const voice = pickVoiceForLanguage(api.getVoices(), language);
     if (voice) warm.voice = voice as SpeechSynthesisVoice;
     api.speak(warm);
     api.cancel();
@@ -125,8 +143,9 @@ export function cancelSpeech() {
   }
 }
 
-export function speakJapanese(
+export function speakCoachLine(
   text: string,
+  language: CoachLanguage,
   handlers: { onstart?: () => void; onend?: () => void; onerror?: () => void } = {},
 ) {
   const api = synth();
@@ -138,10 +157,10 @@ export function speakJapanese(
   try {
     api.cancel();
     const utterance = new SpeechSynthesisUtterance(line);
-    utterance.lang = "ja-JP";
+    utterance.lang = speechLocale(language);
     utterance.rate = 1.08;
     utterance.pitch = 0.95;
-    const voice = pickJapaneseVoice(api.getVoices());
+    const voice = pickVoiceForLanguage(api.getVoices(), language);
     if (voice) utterance.voice = voice as SpeechSynthesisVoice;
     utterance.onstart = () => handlers.onstart?.();
     utterance.onend = () => handlers.onend?.();
@@ -152,4 +171,11 @@ export function speakJapanese(
     handlers.onerror?.();
     return false;
   }
+}
+
+export function speakJapanese(
+  text: string,
+  handlers: { onstart?: () => void; onend?: () => void; onerror?: () => void } = {},
+) {
+  return speakCoachLine(text, "ja", handlers);
 }

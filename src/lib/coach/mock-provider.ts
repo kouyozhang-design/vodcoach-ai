@@ -1,3 +1,4 @@
+import { resolveCoachLanguage } from "../coach-language.ts";
 import { looksLikeSurveyBeacon } from "../live-speech.ts";
 import { formatTimestamp, shiftTimestamp } from "../match-plan.ts";
 import { mergeSimilarInsights, withInsightTab } from "./insight-tabs.ts";
@@ -37,23 +38,30 @@ function buildCoachResponse(input: CoachRequest): CoachResponse {
   const hasVideo = requestHasClip(input);
   const isApex = input.game === "apex-legends";
   const purpose = purposeOf(input, hasVideo);
+  const english = resolveCoachLanguage(input) === "en";
 
   return {
     analysisId: crypto.randomUUID(),
     game: input.game,
     character: input.character,
     kind: hasVideo ? "clip" : "notes",
-    headline: hasVideo
-      ? `${input.character} クリップ診断 · ${input.rank}`
-      : `${input.character} コーチング · ${input.rank}`,
-    summary: hasVideo
-      ? isApex
-        ? `${input.rank} ${input.character}のクリップから、過程と期待値で見た改善だけを残しました。目的: 「${purpose}」。`
-        : `${input.rank} ${input.character}のクリップから、サイトの切り方とスキルの窓を整理しました。目的: 「${purpose}」。`
-      : isApex
-        ? `${input.rank} ${input.character}向けのノートコーチングです。近接の撃ち合いと遮蔽の使い方を、枠に縛らず具体化しています。目的: 「${purpose}」。`
-        : `${input.rank} ${input.character}向けのノートコーチングです。ヘッドラインとアングルの切り方を具体化しています。目的: 「${purpose}」。`,
-    insights: buildInsights(input, hasVideo, isApex, purpose),
+    headline: english
+      ? hasVideo
+        ? `${input.character} clip · ${input.rank}`
+        : `${input.character} notes · ${input.rank}`
+      : hasVideo
+        ? `${input.character} クリップ診断 · ${input.rank}`
+        : `${input.character} コーチング · ${input.rank}`,
+    summary: english
+      ? `${input.rank} ${input.character}. Process and EV only. Focus: ${purpose}.`
+      : hasVideo
+        ? isApex
+          ? `${input.rank} ${input.character}のクリップから、過程と期待値で見た改善だけを残しました。目的: 「${purpose}」。`
+          : `${input.rank} ${input.character}のクリップから、サイトの切り方とスキルの窓を整理しました。目的: 「${purpose}」。`
+        : isApex
+          ? `${input.rank} ${input.character}向けのノートコーチングです。近接の撃ち合いと遮蔽の使い方を、枠に縛らず具体化しています。目的: 「${purpose}」。`
+          : `${input.rank} ${input.character}向けのノートコーチングです。ヘッドラインとアングルの切り方を具体化しています。目的: 「${purpose}」。`,
+    insights: buildInsights(input, hasVideo, isApex, purpose, english),
   };
 }
 
@@ -278,6 +286,7 @@ function ensureHigherEvClose(input: CoachRequest, insights: CoachInsight[]): Coa
 
 function buildLiveResponse(input: CoachRequest): CoachResponse {
   const isApex = input.game === "apex-legends";
+  const english = resolveCoachLanguage(input) === "en";
   const black = (input.frames?.length ?? 0) === 0;
   const concern = input.concern.trim() || `${input.rank}の${input.character}の今の判断`;
   if (black) {
@@ -305,9 +314,13 @@ function buildLiveResponse(input: CoachRequest): CoachResponse {
       speakMoment: "post-fight",
       usedScan: true,
       nextMove: "third-party",
-      spokenLine: `${input.rank}の${input.character}、スキャンで西に2隊。第4リング残り40秒。今は漁夫。正面の撃ち合いに飛び込むな。`,
-      headline: `${input.character} ライブ · ${input.rank}`,
-      summary: `${input.rank}の${input.character}。調査ビーコンの敵位置とアンチ残りを使った次の一手。悩み「${concern}」。`,
+      spokenLine: english
+        ? `${input.rank} ${input.character}, scan shows two squads west. Ring 4, 40 seconds left. Third-party now. Do not dive the front fight.`
+        : `${input.rank}の${input.character}、スキャンで西に2隊。第4リング残り40秒。今は漁夫。正面の撃ち合いに飛び込むな。`,
+      headline: english ? `${input.character} live · ${input.rank}` : `${input.character} ライブ · ${input.rank}`,
+      summary: english
+        ? `${input.rank} ${input.character}. Next move uses the survey-beacon scan, zone, and time. Focus: ${concern}.`
+        : `${input.rank}の${input.character}。調査ビーコンの敵位置とアンチ残りを使った次の一手。悩み「${concern}」。`,
       insights: [
         {
           id: "scan-next",
@@ -343,13 +356,21 @@ function buildLiveResponse(input: CoachRequest): CoachResponse {
     speakMoment: isApex ? "mid-range" : "standoff",
     usedScan: false,
     nextMove: "disengage",
-    spokenLine: isApex
-      ? `${input.rank}の${input.character}、中距離で2射線開いてる。アンチ内にスペースある。今は切って岩へ。押しは漁夫の的。`
-      : `${input.rank}の${input.character}、heaven残したままスイングしてる。今は壁へ戻れ。詰めはアングル1本にしてから。`,
-    headline: `${input.character} ライブ · ${input.rank}`,
-    summary: isApex
-      ? `${input.rank}の${input.character}。中距離の膠着。射線が2本、ゾーン内に逃げ場があるので離脱の方が期待値が高い。悩み「${concern}」。`
-      : `${input.rank}の${input.character}。膠着。heavenが残っているので壁に戻して1アングルだけ切る方が期待値が高い。悩み「${concern}」。`,
+    spokenLine: english
+      ? isApex
+        ? `${input.rank} ${input.character}, two sightlines at mid-range. Space inside the ring. Cut and go to the rock. Pushing is third-party bait.`
+        : `${input.rank} ${input.character}, you swung with heaven still open. Back to the wall. Close only after one angle.`
+      : isApex
+        ? `${input.rank}の${input.character}、中距離で2射線開いてる。アンチ内にスペースある。今は切って岩へ。押しは漁夫の的。`
+        : `${input.rank}の${input.character}、heaven残したままスイングしてる。今は壁へ戻れ。詰めはアングル1本にしてから。`,
+    headline: english ? `${input.character} live · ${input.rank}` : `${input.character} ライブ · ${input.rank}`,
+    summary: english
+      ? isApex
+        ? `${input.rank} ${input.character}. Mid-range standoff. Two sightlines, space inside zone, so disengage has the EV. Focus: ${concern}.`
+        : `${input.rank} ${input.character}. Standoff. Heaven is still open, so one angle off the wall has the EV. Focus: ${concern}.`
+      : isApex
+        ? `${input.rank}の${input.character}。中距離の膠着。射線が2本、ゾーン内に逃げ場があるので離脱の方が期待値が高い。悩み「${concern}」。`
+        : `${input.rank}の${input.character}。膠着。heavenが残っているので壁に戻して1アングルだけ切る方が期待値が高い。悩み「${concern}」。`,
     insights: [
       {
         id: "now-peek",
@@ -372,8 +393,29 @@ function buildInsights(
   hasVideo: boolean,
   isApex: boolean,
   purpose: string,
+  english = false,
 ): CoachInsight[] {
-  const who = `${input.rank}の${input.character}`;
+  const who = english ? `${input.rank} ${input.character}` : `${input.rank}の${input.character}`;
+  if (english) {
+    return [
+      {
+        id: "crosshair-drop",
+        tab: "aim",
+        timestamp: hasVideo ? "00:12" : undefined,
+        title: isApex ? "The first shot window collapses" : "Crosshair drops before the burst",
+        finding: `${who}. Purpose "${purpose}". The first correction after the slide costs the duel.`,
+        action: "Pin the reticle at chest height, then one small lift after you stop.",
+      },
+      {
+        id: "two-angles",
+        tab: "rotation",
+        timestamp: hasVideo ? "00:18" : undefined,
+        title: "You open two sightlines at once",
+        finding: `${who} swings wide enough that teammates can only trade one angle.`,
+        action: "Hold the left edge, cut one angle, then move after the trade.",
+      },
+    ];
+  }
   if (hasVideo) {
     return [
       {

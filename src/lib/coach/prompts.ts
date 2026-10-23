@@ -1,3 +1,4 @@
+import { languageInstruction, resolveCoachLanguage } from "../coach-language.ts";
 import { formatTimestamp } from "../match-plan.ts";
 import { COACHING_BAR } from "./bar.ts";
 import { formatRotationLine } from "./rotation.ts";
@@ -22,10 +23,12 @@ export function profileLines(input: Pick<CoachRequest, "game" | "rank" | "charac
   ];
 }
 
-export function systemPrompt(mode: CoachMode) {
+export function systemPrompt(mode: CoachMode, language = resolveCoachLanguage({})) {
+  const langLine = languageInstruction(language);
   if (mode === "live") {
     return `${COACHING_BAR}
-あなたはFPSのライブ音声コーチです。日本語で指定JSONだけを返します。プレイヤーは試合中で、タブも通知も見ません。製品は声です。
+あなたはFPSのライブ音声コーチです。指定JSONだけを返します。プレイヤーは試合中で、タブも通知も見ません。製品は声です。
+${langLine}
 spokenLine は Web Speech が読む本文。短文。句点で切る。1〜3文。辛口で面白い。プロチームの過程と期待値。その選手のゲーム／ランク／キャラ／悩みと画面根拠を刺す。汎用スローガン禁止。
 shouldSpeak を true にしていいのは次だけ。
 1) post-fight: スクラップが終わった直後のレビュー。何が見えていて、次の1手がなぜ期待値か。
@@ -43,7 +46,8 @@ JSON形状:
   }
   if (mode === "match-chunk") {
     return `${COACHING_BAR}
-あなたはFPSの試合VODコーチです。日本語で指定JSONだけを返します。
+あなたはFPSの試合VODコーチです。指定JSONだけを返します。
+${langLine}
 渡された時間帯だけを見る。insights は本当に期待値を落としている局面だけ。局面がなければ空配列。0件でよい。件数は固定しない（目安 0〜8）。枠を埋めない。
 id は自由。tab は rotation | aim | abilities | endgame | other。aim / positioning / abilities / practice の4枠に縛らない。
 撃ち合いが無くても、勝っていても、より高い期待値の詰めがあれば tab=endgame で出す。類似は1件にまとめる。
@@ -61,7 +65,8 @@ JSON形状:
   }
   if (mode === "match-merge") {
     return `${COACHING_BAR}
-あなたはFPSの試合レポート編集者です。日本語で指定JSONだけを返します。
+あなたはFPSの試合レポート編集者です。指定JSONだけを返します。
+${langLine}
 区間レポートを1本の試合レポートにまとめる。重複とスローガンと結果論だけを削り、タイムスタンプ付きの具体的な局面だけを残す。0件でもよい。枠を埋めない。
 回転は試合全体で判定する。各40秒の正誤をそのまま並べない。
 全区間の rotation（ring, path, thirdPartyTiming, intent, note）を時系列で読み、スクワッドがゾーンファースト／ゾーンカット／漁夫のどれをいつ選び、それは試合全体のリングと人数と銃声から正しかったかを1つの物語にする。
@@ -74,7 +79,8 @@ JSON形状:
 {"headline":string,"summary":string,"rotationStory":string,"insights":[{"id":string,"tab":"rotation"|"aim"|"abilities"|"endgame"|"other","timestamp":string,"title":string,"finding":string,"action":string}]}`;
   }
   return `${COACHING_BAR}
-あなたはFPSの動画／ノートコーチです。日本語で、指定JSONだけを返します。
+あなたはFPSの動画／ノートコーチです。指定JSONだけを返します。
+${langLine}
 insights は本当に改善すべき点だけ。件数は固定しない。短いクリップは1〜3件でよい。長いクリップでも枠を埋めない。
 id は自由。tab は rotation | aim | abilities | endgame | other。4枠（aim/positioning/abilities/practice）に圧縮しない。
 練習メニューは実在する改善に紐づくときだけ tab=other に出す。スローガンのサーキットで埋めない。
@@ -88,13 +94,19 @@ JSON形状:
 }
 
 export function buildUserText(input: CoachRequest, mode: CoachMode, hasVideo: boolean, hasFrames: boolean) {
+  const language = resolveCoachLanguage(input);
   const lines = profileLines(input);
+  lines.push(languageInstruction(language));
   lines.push("コーチングは過程と期待値で評価し、結果だけで判断しない。この選手の設定と画面／映像の根拠を必ず使う。");
 
   if (mode === "live") {
     lines.push("ライブ画面共有のフレームです。製品は声。戦闘後レビュー、膠着の詰め、中距離の押し／離脱だけ話す。撃ち合い中の長話はしない。");
     lines.push("調査ビーコンやreconをファイト前に使っていたら、スキャンの敵位置とアンチと残り時間を spokenLine に入れて次の一手を言え。");
-    lines.push("shouldSpeak=true のとき spokenLine に、辛口で短い日本語を書く。タブも通知も出さない。ゲーム内オーバーレイは使いません。");
+    lines.push(
+      language === "en"
+        ? "When shouldSpeak=true, write spokenLine as short, sharp English. No tabs. No overlay."
+        : "shouldSpeak=true のとき spokenLine に、辛口で短い日本語を書く。タブも通知も出さない。ゲーム内オーバーレイは使いません。",
+    );
     if (hasFrames) lines.push(`静止画 ${input.frames?.length ?? 0} 枚を添付しています。`);
     const recent = input.recentCues?.map((cue) => cue.trim()).filter(Boolean) ?? [];
     if (recent.length > 0) {

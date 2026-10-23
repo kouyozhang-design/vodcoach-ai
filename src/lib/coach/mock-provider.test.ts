@@ -176,6 +176,24 @@ test("mock live speaks once then skips repeats via recentCues", async () => {
   assert.match(second.headline, /注視中/);
 });
 
+test("mock live English uses an English spoken line", async () => {
+  const spoken = await videoCoachProvider.analyze({
+    ...base,
+    language: "en",
+    mode: "live",
+    frames: [{ timestamp: 1, mimeType: "image/jpeg", dataUrl: "data:image/jpeg;base64,aa" }],
+  });
+  assert.equal(spoken.shouldSpeak, true);
+  assert.match(spoken.spokenLine ?? "", /mid-range|sightlines/i);
+  assert.doesNotMatch(spoken.spokenLine ?? "", /中距離/);
+});
+
+test("mock notes English writes English insights", async () => {
+  const notes = await videoCoachProvider.analyze({ ...base, language: "en", mode: "clip" });
+  assert.match(notes.headline, /notes/);
+  assert.match(notes.insights[0].title, /shot|Crosshair|sightlines/i);
+});
+
 test("mock live uses survey beacon scan for the next move", async () => {
   const { spokenLineUsesScan } = await import("../live-speech.ts");
   const scanned = await videoCoachProvider.analyze({
@@ -190,4 +208,18 @@ test("mock live uses survey beacon scan for the next move", async () => {
   assert.equal(scanned.nextMove, "third-party");
   assert.equal(spokenLineUsesScan(scanned.spokenLine ?? ""), true);
   assert.match(scanned.spokenLine ?? "", /第4リング残り40秒/);
+});
+
+test("mock live English survey beacon uses scan, zone, and time", async () => {
+  const { spokenLineUsesScan } = await import("../live-speech.ts");
+  const scanned = await videoCoachProvider.analyze({
+    ...base,
+    language: "en",
+    concern: "survey beacon then mid-range close",
+    mode: "live",
+    frames: [{ timestamp: 1, mimeType: "image/jpeg", dataUrl: "data:image/jpeg;base64,aa" }],
+  });
+  assert.equal(scanned.usedScan, true);
+  assert.equal(spokenLineUsesScan(scanned.spokenLine ?? ""), true);
+  assert.match(scanned.spokenLine ?? "", /40 seconds/i);
 });
