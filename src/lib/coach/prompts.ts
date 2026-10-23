@@ -59,9 +59,10 @@ rotation は insights が空でも必ず埋める。デスカムや移動だけ�
 - thirdPartyTiming: 第三者が入った／入れたタイミング。無ければ空文字
 - note: 見えていたリング・人数・銃声の事実。この区間の勝敗で褒めたり責めたりしない
 timestamp は試合全体の mm:ss（チャンク先頭からの相対ではなく絶対時間）。
+近距離スクラップがあるときだけ closeRangeFights を出す。1スクラップ = 1件。insights には斜線の細部を詰め込まない。細部は closeRangeFights.sightlines（オフアングル、カバー、誰がピークを持つか）と knowHow（誰を撃つか、ユーティリティのタイミング、インファイトの選択）へ。start/end は試合時刻 mm:ss。無ければ空配列。
 JPEGは補助。動画セグメントがあるときは動画を優先。
 JSON形状:
-{"headline":string,"summary":string,"rotation":{"intent":"zone-first"|"zone-cut"|"third-party"|"unknown","ring":string,"path":string,"thirdPartyTiming":string,"note":string},"insights":[{"id":string,"tab":"rotation"|"aim"|"abilities"|"endgame"|"other","timestamp":string,"title":string,"finding":string,"action":string}]}`;
+{"headline":string,"summary":string,"rotation":{"intent":"zone-first"|"zone-cut"|"third-party"|"unknown","ring":string,"path":string,"thirdPartyTiming":string,"note":string},"insights":[{"id":string,"tab":"rotation"|"aim"|"abilities"|"endgame"|"other","timestamp":string,"title":string,"finding":string,"action":string}],"closeRangeFights":[{"id":string,"start":string,"end":string,"title":string,"sightlines":string,"knowHow":string}]}`;
   }
   if (mode === "match-merge") {
     return `${COACHING_BAR}
@@ -75,8 +76,9 @@ insights は 1カード = 1つの実在する改善。4枠（aim/positioning/abi
 勝っていても、より高い期待値の詰め／クローズがあれば tab=endgame で出す。キルや勝利を理由に省略しない。
 件数の上限はUI破綻防止のみ（おおよそ36）。埋め草で増やさない。質を優先。
 timestamp は mm:ss のまま。tab は rotation | aim | abilities | endgame | other。
+各区間の closeRangeFights を時系列で残す。類似スクラップは1件にまとめる。insights に斜線細部を再掲しない。
 JSON形状:
-{"headline":string,"summary":string,"rotationStory":string,"insights":[{"id":string,"tab":"rotation"|"aim"|"abilities"|"endgame"|"other","timestamp":string,"title":string,"finding":string,"action":string}]}`;
+{"headline":string,"summary":string,"rotationStory":string,"insights":[{"id":string,"tab":"rotation"|"aim"|"abilities"|"endgame"|"other","timestamp":string,"title":string,"finding":string,"action":string}],"closeRangeFights":[{"id":string,"start":string,"end":string,"title":string,"sightlines":string,"knowHow":string}]}`;
   }
   return `${COACHING_BAR}
 あなたはFPSの動画／ノートコーチです。指定JSONだけを返します。
@@ -88,9 +90,10 @@ id は自由。tab は rotation | aim | abilities | endgame | other。4枠（aim
 勝っても、より高い期待値の詰め／クローズがあれば tab=endgame で出す。
 勝敗やキルデスだけで褒めたり責めたりしない。汎用スローガンは禁止。
 クリップ動画があるときは映像の時間帯に触れる。JPEGではなく渡された動画そのものを見る。
-ノートのみのときは、悩み文をその選手の試合で起きる判断ミスとして具体化する。
+近距離スクラップがあるときだけ closeRangeFights。斜線管理（オフアングル、カバー、ピークの権利）と戦闘のノウハウ（誰を撃つか、ユーティリティ、インファイト）は expander 用。insights は高信号の1行に留める。ライブ用ではない。
+ノートのみのときは closeRangeFights は空。悩み文をその選手の試合で起きる判断ミスとして具体化する。
 JSON形状:
-{"headline":string,"summary":string,"insights":[{"id":string,"tab":"rotation"|"aim"|"abilities"|"endgame"|"other","timestamp":string,"title":string,"finding":string,"action":string}]}`;
+{"headline":string,"summary":string,"insights":[{"id":string,"tab":"rotation"|"aim"|"abilities"|"endgame"|"other","timestamp":string,"title":string,"finding":string,"action":string}],"closeRangeFights":[{"id":string,"start":string,"end":string,"title":string,"sightlines":string,"knowHow":string}]}`;
 }
 
 export function buildUserText(input: CoachRequest, mode: CoachMode, hasVideo: boolean, hasFrames: boolean) {
@@ -121,6 +124,7 @@ export function buildUserText(input: CoachRequest, mode: CoachMode, hasVideo: bo
     lines.push("以下は試合を時間分割して解析した区間レポートです。1本の試合レポートに統合してください。空の区間の撃ち合いは空のまま扱い、埋めない。");
     lines.push("回転は全区間の rotation を時系列で読み、試合全体でゾーンファースト／ゾーンカット／漁夫の正誤を判定する。40秒ごとの感想を並べない。");
     lines.push("勝っていても、より高い期待値の詰めがあれば残す。類似はマージ。");
+    lines.push("各区間の closeRangeFights があれば試合時刻のまま残す。斜線とインファイトの細部は expander 用。insights に再掲しない。");
     if (input.durationSec) lines.push(`試合の長さ: ${formatTimestamp(input.durationSec)}`);
     reports.forEach((report, index) => {
       const start = report.startOffsetSec ?? 0;
@@ -132,6 +136,15 @@ export function buildUserText(input: CoachRequest, mode: CoachMode, hasVideo: bo
       if (rotationLine) lines.push(rotationLine);
       else lines.push("回転: （この区間の回転メモなし）");
       const insights = report.insights ?? [];
+      const fights = report.closeRangeFights ?? [];
+      if (fights.length > 0) {
+        lines.push("近距離スクラップ:");
+        for (const fight of fights) {
+          lines.push(
+            `- fight ${fight.start}–${fight.end} ${fight.title}: 斜線=${fight.sightlines} / ノウハウ=${fight.knowHow}`,
+          );
+        }
+      }
       if (insights.length === 0) {
         lines.push("- （この区間に撃ち合いの指摘なし。回転メモは上を使う）");
         return;
@@ -153,6 +166,7 @@ export function buildUserText(input: CoachRequest, mode: CoachMode, hasVideo: bo
       `試合VODの区間 ${formatTimestamp(start)}–${formatTimestamp(end)} です。timestamp はこの試合時刻で書いてください。撃ち合いがなければ insights は空配列。rotation は空にしない。`,
     );
     lines.push("この区間の回転の正誤は断定せず、リング・経路・漁夫タイミングの事実を rotation に残す。試合全体の判定は後段のマージが行う。");
+    lines.push("近距離スクラップがあれば closeRangeFights に斜線と戦闘ノウハウを厚く書く。insights は高信号だけ。");
     if (typeof input.chunkIndex === "number" && typeof input.chunkCount === "number") {
       lines.push(`区間 ${input.chunkIndex + 1}/${input.chunkCount}`);
     }
@@ -164,8 +178,8 @@ export function buildUserText(input: CoachRequest, mode: CoachMode, hasVideo: bo
 
   lines.push(
     hasVideo
-      ? "クリップ動画を添付しています。動画ファイルそのものを見てコーチングしてください。"
-      : "動画なし。ノートコーチングです。悩み文を、そのランクとそのキャラの判断として具体化してください。",
+      ? "クリップ動画を添付しています。動画ファイルそのものを見てコーチングしてください。近距離があれば closeRangeFights に斜線とインファイトを厚く。"
+      : "動画なし。ノートコーチングです。悩み文を、そのランクとそのキャラの判断として具体化してください。closeRangeFights は空。",
   );
   if (input.videoUrl && hasVideo) {
     lines.push("クリップはクラウド上のHTTPS URLから参照しています。");

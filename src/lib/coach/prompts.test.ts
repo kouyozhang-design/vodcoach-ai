@@ -50,6 +50,43 @@ test("clip prompt is not locked to four insight ids", () => {
   assert.match(prompt, /件数は固定しない/);
   assert.doesNotMatch(prompt, /必ず4件/);
   assert.match(prompt, /tab は rotation/);
+  assert.match(prompt, /closeRangeFights/);
+  assert.match(prompt, /オフアングル/);
+});
+
+test("vod prompts put close-range micro in expanders, live does not", () => {
+  assert.match(systemPrompt("match-chunk"), /closeRangeFights/);
+  assert.match(systemPrompt("match-chunk"), /斜線/);
+  assert.match(systemPrompt("match-merge"), /closeRangeFights/);
+  assert.doesNotMatch(systemPrompt("live"), /"closeRangeFights"/);
+  const mergeText = buildUserText(
+    {
+      ...sample,
+      mode: "match-merge",
+      chunkReports: [
+        {
+          startOffsetSec: 0,
+          endOffsetSec: 40,
+          insights: [],
+          closeRangeFights: [
+            {
+              id: "s",
+              start: "00:08",
+              end: "00:16",
+              title: "正面ピーク",
+              sightlines: "オフアングルを捨てている",
+              knowHow: "ドアから撃て",
+            },
+          ],
+        },
+      ],
+    },
+    "match-merge",
+    false,
+    false,
+  );
+  assert.match(mergeText, /オフアングルを捨てている/);
+  assert.match(mergeText, /insights に再掲しない/);
 });
 
 test("match-merge prompt judges rotation across the whole match", () => {

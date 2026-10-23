@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  fightChrome,
   insightTabLabel,
   languageInstruction,
   liveChrome,
@@ -24,4 +25,10 @@ test("prompts and cheap chrome switch with language", () => {
   assert.equal(insightTabLabel("rotation", "en"), "Pathing / rotate");
   assert.equal(liveChrome("ja").speakingNow, "いま話しています");
   assert.equal(liveChrome("en").speakingNow, "Speaking now");
+  assert.equal(fightChrome("ja").sightlines, "細かい斜線管理");
+  assert.equal(fightChrome("ja").knowHow, "戦闘のノウハウ");
+  assert.equal(fightChrome("en").sightlines, "Fine sightline work");
+  assert.equal(fightChrome("en").knowHow, "In-fight know-how");
+  assert.match(languageInstruction("ja"), /closeRangeFights/);
+  assert.match(languageInstruction("en"), /closeRangeFights/);
 });

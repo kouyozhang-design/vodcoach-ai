@@ -7,6 +7,7 @@ import {
   AlertCircle, Check, ChevronDown, FileVideo, Gamepad2, LoaderCircle,
   Monitor, Play, ScanLine, Shield, Sparkles, UploadCloud, X,
 } from "lucide-react";
+import { FightExpanders } from "@/components/fight-expanders";
 import { InsightBoard } from "@/components/insight-board";
 import { LiveSession } from "@/components/live-session";
 import {
@@ -128,6 +129,8 @@ export default function Home() {
   const [uploadPercent, setUploadPercent] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [result, setResult] = useState<CoachResponse | null>(null);
+  const [uploadedVideoUrl, setUploadedVideoUrl] = useState("");
+  const [analysisFrames, setAnalysisFrames] = useState<CoachFrame[]>([]);
   const safariDropOnly = useSyncExternalStore(subscribeNoop, getSafariDropOnly, () => true);
   const language = useSyncExternalStore(subscribeLanguage, readStoredLanguage, () => DEFAULT_COACH_LANGUAGE);
   const urlRef = useRef("");
@@ -195,6 +198,8 @@ export default function Home() {
     urlRef.current = nextUrl;
     setPreviewUrl(nextUrl);
     setFile(nextFile);
+    setUploadedVideoUrl("");
+    setAnalysisFrames([]);
     setResult(null);
     setStatus("ready");
   }
@@ -222,6 +227,8 @@ export default function Home() {
     urlRef.current = "";
     setPreviewUrl("");
     setFile(null);
+    setUploadedVideoUrl("");
+    setAnalysisFrames([]);
     setResult(null);
     setError("");
     setStatus("empty");
@@ -269,6 +276,8 @@ export default function Home() {
 
     setError("");
     setResult(null);
+    setAnalysisFrames([]);
+    if (!file) setUploadedVideoUrl("");
     setChunkProgress(null);
     setUploadPercent(null);
     setProgress(4);
@@ -311,6 +320,7 @@ export default function Home() {
           setProgressLabel(uploadProgressLabel(pct));
         },
       });
+      setUploadedVideoUrl(videoUrl);
       setUploadPercent(null);
       setProgress((current) => Math.max(current, 12));
       timer = startFakeProgress();
@@ -344,6 +354,7 @@ export default function Home() {
           headline: payload.headline,
           summary: payload.summary,
           insights: payload.insights,
+          closeRangeFights: payload.closeRangeFights,
           rotation: payload.rotation,
           startOffsetSec: chunk.startSec,
           endOffsetSec: chunk.endSec,
@@ -397,6 +408,7 @@ export default function Home() {
             );
             touchProgress();
             reports[chunk.index] = await analyzeChunk(chunk, frames);
+            setAnalysisFrames((current) => [...current, ...frames]);
             touchProgress();
           } catch (reason) {
             if (run.signal.aborted || isAbortError(reason)) break;
@@ -703,6 +715,13 @@ export default function Home() {
                       language={language}
                     />
                   )}
+                  <FightExpanders
+                    fights={result.closeRangeFights ?? []}
+                    language={language}
+                    previewUrl={previewUrl}
+                    videoUrl={uploadedVideoUrl}
+                    frames={analysisFrames}
+                  />
                 </div>
               </div>
             )}

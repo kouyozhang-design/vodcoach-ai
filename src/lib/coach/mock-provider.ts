@@ -1,9 +1,11 @@
 import { resolveCoachLanguage } from "../coach-language.ts";
 import { looksLikeSurveyBeacon } from "../live-speech.ts";
 import { formatTimestamp, shiftTimestamp } from "../match-plan.ts";
+import { fightsFromChunkReports } from "./fight-detail.ts";
 import { mergeSimilarInsights, withInsightTab } from "./insight-tabs.ts";
 import { isEmptyRotation, summarizeRotationTimeline } from "./rotation.ts";
 import type {
+  CloseRangeFight,
   CoachChunkReport,
   CoachInsight,
   CoachRequest,
@@ -62,6 +64,7 @@ function buildCoachResponse(input: CoachRequest): CoachResponse {
           ? `${input.rank} ${input.character}向けのノートコーチングです。近接の撃ち合いと遮蔽の使い方を、枠に縛らず具体化しています。目的: 「${purpose}」。`
           : `${input.rank} ${input.character}向けのノートコーチングです。ヘッドラインとアングルの切り方を具体化しています。目的: 「${purpose}」。`,
     insights: buildInsights(input, hasVideo, isApex, purpose, english),
+    closeRangeFights: buildClipFights(input, hasVideo, isApex, english),
   };
 }
 
@@ -178,6 +181,7 @@ function buildMatchChunkResponse(input: CoachRequest): CoachResponse {
     headline: `${input.character} 区間 ${formatTimestamp(start)}–${formatTimestamp(end)}`,
     summary: `${input.rank}の${input.character}。この時間帯から、見えていた情報で期待値を落とした局面だけを残しました。勝っていても詰めを見ています。`,
     insights,
+    closeRangeFights: buildChunkFights(input, start, isApex),
     rotation,
     durationSec: input.durationSec,
     chunk: {
@@ -212,6 +216,7 @@ function buildMergeResponse(input: CoachRequest): CoachResponse {
             input.durationSec ? `対象の長さは約 ${formatTimestamp(input.durationSec)} です。` : ""
           }`,
     insights,
+    closeRangeFights: fightsFromChunkReports(reports),
     rotationStory: rotationStory || undefined,
     durationSec: input.durationSec,
   };
@@ -386,6 +391,54 @@ function buildLiveResponse(input: CoachRequest): CoachResponse {
       },
     ],
   };
+}
+
+function buildClipFights(
+  input: CoachRequest,
+  hasVideo: boolean,
+  isApex: boolean,
+  english: boolean,
+): CloseRangeFight[] {
+  if (!hasVideo) return [];
+  const who = english ? `${input.rank} ${input.character}` : `${input.rank}の${input.character}`;
+  if (english) {
+    return [
+      {
+        id: "scrap-1",
+        start: "00:10",
+        end: "00:18",
+        title: isApex ? "Front door peek instead of the off-angle" : "Swings heaven with the off-angle empty",
+        sightlines: `${who} at 00:12. Off-angle sits on the right rock/jamb. You take the front peek. Enemy owns that peek. Cover is one step left. Teammates can trade only the left line.`,
+        knowHow: "Reset to one body visible. Utility before the swing. Shoot door first, then the cover player. Second target after the nade, not during the first burst.",
+      },
+    ];
+  }
+  return [
+    {
+      id: "scrap-1",
+      start: "00:10",
+      end: "00:18",
+      title: isApex ? "岩右のオフアングルを捨てて正面ピーク" : "オフアングルを空にしてheavenを開く",
+      sightlines: `00:12、${who}。岩／枠の右にオフアングルがあるのに正面を開いている。ピークの権利は正面の敵。カバーは左へ1歩。味方がトレードできるのは左の1本だけ。`,
+      knowHow: "見える体を1人に削ってから出せ。タクティカルはスイング前。撃つ順はドア→カバー側。2人目はユーティリティ後。最初のバースト中に持ち替えるな。",
+    },
+  ];
+}
+
+function buildChunkFights(input: CoachRequest, start: number, isApex: boolean): CloseRangeFight[] {
+  const who = `${input.rank}の${input.character}`;
+  const from = formatTimestamp(start + 4);
+  const to = formatTimestamp(start + 12);
+  return [
+    {
+      id: `scrap-${from}`,
+      start: from,
+      end: to,
+      title: isApex ? "カバーを離れて2本の斜線を同時に開く" : "壁を離れて2アングルを同時に開く",
+      sightlines: `${from}、${who}がカバーを離れた瞬間に左右が開く。ピークは奥の敵。オフアングルは左端に残っているのに使っていない。`,
+      knowHow: "左端へ張り、見える敵を1人にしてからスライド。ユーティリティは出す3秒前。撃つ順はピークを持っている側から。残りの1人は角度を変えてから。",
+    },
+  ];
 }
 
 function buildInsights(

@@ -37,6 +37,16 @@ export type CoachInsight = {
   action: string;
 };
 
+/** Close-range scrap detail. Lives in VOD expanders, not the main card list. */
+export type CloseRangeFight = {
+  id: string;
+  start: string;
+  end: string;
+  title: string;
+  sightlines: string;
+  knowHow: string;
+};
+
 export type CoachFrame = {
   timestamp: number;
   mimeType: "image/jpeg";
@@ -67,6 +77,7 @@ export type CoachChunkReport = {
   headline?: string;
   summary?: string;
   insights?: CoachInsight[];
+  closeRangeFights?: CloseRangeFight[];
   rotation?: RotationNote;
   startOffsetSec?: number;
   endOffsetSec?: number;
@@ -79,6 +90,7 @@ export type CoachResponse = {
   headline: string;
   summary: string;
   insights: CoachInsight[];
+  closeRangeFights?: CloseRangeFight[];
   kind?: CoachReportKind;
   durationSec?: number;
   chunk?: { startOffsetSec: number; endOffsetSec: number; index?: number; count?: number };

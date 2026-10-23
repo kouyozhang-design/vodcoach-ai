@@ -37,9 +37,30 @@ export function resolveCoachLanguage(input: { language?: unknown }): CoachLangua
 
 export function languageInstruction(language: CoachLanguage) {
   if (language === "en") {
-    return "Write every user-facing string in English: headline, summary, spokenLine, insight title/finding/action, rotation notes, rotationStory. JSON keys stay English. Tone: sharp and funny. Short sentences. Same pro-team bar. No generic slogans.";
+    return "Write every user-facing string in English: headline, summary, spokenLine, insight title/finding/action, rotation notes, rotationStory, closeRangeFights title/sightlines/knowHow. JSON keys stay English. Tone: sharp and funny. Short sentences. Same pro-team bar. No generic slogans.";
   }
-  return "ユーザー向け文字列はすべて日本語。headline, summary, spokenLine, insight の title/finding/action, rotation, rotationStory。JSONキーは英語のまま。口調は辛口で面白い。短文。プロチームの過程と期待値。汎用スローガン禁止。";
+  return "ユーザー向け文字列はすべて日本語。headline, summary, spokenLine, insight の title/finding/action, rotation, rotationStory, closeRangeFights の title/sightlines/knowHow。JSONキーは英語のまま。口調は辛口で面白い。短文。プロチームの過程と期待値。汎用スローガン禁止。";
+}
+
+export function fightChrome(language: CoachLanguage) {
+  if (language === "en") {
+    return {
+      heading: "Close-range scraps",
+      hint: "Tap a fight for fine sightlines and in-fight choices. Collapsed so the board stays short.",
+      sightlines: "Fine sightline work",
+      knowHow: "In-fight know-how",
+      noMedia: "No local clip left. Still shots come from the playable URL if we have one.",
+      loading: "Grabbing frames from this scrap",
+    };
+  }
+  return {
+    heading: "近距離の撃ち合い",
+    hint: "タップすると、そのスクラップだけの細かい斜線管理と戦闘のノウハウを開きます。最初は畳んであります。",
+    sightlines: "細かい斜線管理",
+    knowHow: "戦闘のノウハウ",
+    noMedia: "手元の動画が残っていません。再生できるURLがあれば、そこから静止画を切ります。",
+    loading: "このスクラップから切り出し中",
+  };
 }
 
 export function speechLocale(language: CoachLanguage) {

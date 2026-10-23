@@ -4,6 +4,7 @@ import { formatTimestamp } from "@/lib/match-plan";
 import { mimeFromFileName } from "@/lib/video";
 import { resolveCoachLanguage, type CoachLanguage } from "../coach-language";
 import { spokenLineForCue, parseNextMove, parseSpeakMoment } from "../live-speech";
+import { resolveCloseRangeFights } from "./fight-detail";
 import { insightsFromParsed } from "./insight-tabs";
 import { buildUserText, systemPrompt } from "./prompts";
 import { parseRotation } from "./rotation";
@@ -386,6 +387,24 @@ function schemaFor(mode: CoachMode) {
     properties.rotationStory = { type: "STRING" };
     required.push("rotationStory");
   }
+  if (mode !== "live") {
+    properties.closeRangeFights = {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          id: { type: "STRING" },
+          start: { type: "STRING" },
+          end: { type: "STRING" },
+          title: { type: "STRING" },
+          sightlines: { type: "STRING" },
+          knowHow: { type: "STRING" },
+        },
+        required: ["start", "title", "sightlines", "knowHow"],
+      },
+    };
+    required.push("closeRangeFights");
+  }
   return {
     type: "OBJECT",
     properties,
@@ -415,6 +434,8 @@ function toCoachResponse(parsed: Record<string, unknown>, input: CoachRequest, m
     insights,
     kind,
   };
+  const fights = resolveCloseRangeFights(parsed, input, mode);
+  if (fights.length > 0) response.closeRangeFights = fights;
   if (mode === "live") {
     const speakMoment = parseSpeakMoment(parsed.speakMoment);
     if (speakMoment) response.speakMoment = speakMoment;

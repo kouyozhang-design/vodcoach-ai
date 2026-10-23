@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { parseCoachLanguage } from "@/lib/coach-language";
+import { parseCloseRangeFights } from "@/lib/coach/fight-detail";
 import { parseInsightTab } from "@/lib/coach/insight-tabs";
 import { getCoachProvider } from "@/lib/coach/provider";
 import { parseRotation } from "@/lib/coach/rotation";
@@ -222,10 +223,23 @@ function parseChunkReports(value: unknown): CoachChunkReport[] | undefined | Nex
           ];
         })
       : [];
+    const closeRangeFights = parseCloseRangeFights(
+      { closeRangeFights: row.closeRangeFights },
+      {
+        game: "apex-legends",
+        rank: "",
+        character: "",
+        concern: "",
+        startOffsetSec: parseNumber(row.startOffsetSec),
+        endOffsetSec: parseNumber(row.endOffsetSec),
+      },
+      "match-merge",
+    );
     reports.push({
       headline: stringifyField(row.headline) || undefined,
       summary: stringifyField(row.summary) || undefined,
       insights,
+      closeRangeFights: closeRangeFights.length > 0 ? closeRangeFights : undefined,
       rotation: parseRotation(row.rotation),
       startOffsetSec: parseNumber(row.startOffsetSec),
       endOffsetSec: parseNumber(row.endOffsetSec),
