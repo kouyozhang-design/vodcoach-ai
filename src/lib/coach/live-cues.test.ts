@@ -19,27 +19,44 @@ function live(partial: Partial<CoachResponse>): CoachResponse {
     summary: "live",
     insights: [peek],
     kind: "live",
+    spokenLine: "プラチナのレイス、岩から顔出して2射線。今は切れ。",
+    speakMoment: "standoff",
     ...partial,
   };
 }
 
 test("decideLiveCue skips when the model says not to speak", () => {
-  const decision = decideLiveCue(live({ shouldSpeak: false, insights: [] }), []);
+  const decision = decideLiveCue(live({ shouldSpeak: false, insights: [], spokenLine: "" }), []);
   assert.deepEqual(decision, { speak: false, reason: "model-skip" });
 });
 
 test("decideLiveCue skips empty insights even if shouldSpeak is missing", () => {
-  assert.deepEqual(decideLiveCue(live({ insights: [] }), []), { speak: false, reason: "empty" });
+  assert.deepEqual(decideLiveCue(live({ insights: [], spokenLine: "" }), []), { speak: false, reason: "empty" });
 });
 
 test("decideLiveCue skips near-duplicate repeats", () => {
-  const recent = rememberCues([], [peek]);
-  assert.equal(isRepeatCue([peek], recent), true);
+  const line = "プラチナのレイス、岩から顔出して2射線。今は切れ。";
+  const recent = rememberCues([], [peek], line);
+  assert.equal(isRepeatCue([peek], recent, line), true);
   const decision = decideLiveCue(live({ shouldSpeak: true }), recent);
   assert.deepEqual(decision, { speak: false, reason: "repeat" });
 });
 
 test("decideLiveCue speaks a new real cue", () => {
   const decision = decideLiveCue(live({ shouldSpeak: true }), []);
-  assert.deepEqual(decision, { speak: true, reason: "speak" });
+  assert.equal(decision.speak, true);
+  assert.equal(decision.reason, "speak");
+  assert.match(decision.spokenLine ?? "", /切れ/);
+});
+
+test("decideLiveCue drops a mid-fight lecture", () => {
+  const decision = decideLiveCue(
+    live({
+      shouldSpeak: true,
+      speakMoment: "mid-fight",
+      spokenLine: "今のスライドは観光だ。2射線開いている。第3が右にいる。ここで講義を始めるな。ゾーンも見ろ。",
+    }),
+    [],
+  );
+  assert.deepEqual(decision, { speak: false, reason: "lecture" });
 });

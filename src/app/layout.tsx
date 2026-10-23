@@ -18,7 +18,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "VODCoach.AI — 試合一本とライブコーチ",
   description:
-    "Apex Legends と VALORANT のクリップや試合一本を解析し、改善点ごとにカードを出します。長い試合は種類タブと試合全体の回転で読みます。PCでは画面共有でプレイ中のコーチングも出せます。",
+    "Apex Legends と VALORANT のクリップや試合一本を解析し、改善点ごとにカードを出します。長い試合は種類タブと試合全体の回転で読みます。PCライブは画面共有で、戦闘後と膠着だけ声で話します。",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

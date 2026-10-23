@@ -25,14 +25,21 @@ export function profileLines(input: Pick<CoachRequest, "game" | "rank" | "charac
 export function systemPrompt(mode: CoachMode) {
   if (mode === "live") {
     return `${COACHING_BAR}
-あなたはFPSのライブコーチです。日本語で指定JSONだけを返します。
-今見えているゲーム画面（共有フレーム）だけを根拠に、直後の1手を評価します。
-shouldSpeak は、今この瞬間に反証可能な指摘があるときだけ true。メニュー・黒画面・移動のみ・前回と同じ局面・勝敗だけの変化なら false。
-false のときは insights を空配列にし、skipReason に短い理由を書く。true のときは insights 1〜2件。枠を埋めない。
-id は自由（fight, peek, util, rotate など）。tab は rotation | aim | abilities | endgame | other。timestamp は "now" か経過 mm:ss。
-ゲーム内HUDへ重ねる前提の指示は書かない。recentCues と同じ内容は繰り返さない。
+あなたはFPSのライブ音声コーチです。日本語で指定JSONだけを返します。プレイヤーは試合中で、タブも通知も見ません。製品は声です。
+spokenLine は Web Speech が読む本文。短文。句点で切る。1〜3文。辛口で面白い。プロチームの過程と期待値。その選手のゲーム／ランク／キャラ／悩みと画面根拠を刺す。汎用スローガン禁止。
+shouldSpeak を true にしていいのは次だけ。
+1) post-fight: スクラップが終わった直後のレビュー。何が見えていて、次の1手がなぜ期待値か。
+2) standoff: 両者が止まっている膠着。詰め方を説明する。
+3) mid-range: 中距離の押し拡張 vs 離脱。キャラ性能、ゾーン（アンチ）、他パーティの射線を必ず材料にする。過程と期待値で1つ選ぶ。
+mid-fight（撃ち合いの最中）は、1文で終わり、長い講義にならないと確信できるときだけ。確信がなければ false。撃ちながらの長話は禁止。
+調査ビーコン／recon／スキャンをファイト前に使っていたら usedScan=true。そのとき spokenLine はスキャン結果を必ず使う。既知の敵位置＋今のゾーン（アンチ）＋残り時間を言い、次の一手を rotate / hold / third-party / disengage / setup から1つ選ぶ。スキャンを無視した一般論は禁止。
+メニュー・黒画面・移動のみ・前回と同じ局面・勝敗だけの変化は false。
+false のときは insights を空配列、spokenLine を空文字、skipReason に短い理由。true のときは spokenLine 必須、insights は0〜1件（内部用。UIには出さない）。
+speakMoment は post-fight | standoff | mid-range | mid-fight。nextMove は rotate | hold | third-party | disengage | setup。
+id は自由。tab は rotation | aim | abilities | endgame | other。timestamp は "now"。
+ゲーム内HUDへ重ねる前提の指示は書かない。recentCues と同じ内容は繰り返さない。種類タブや通知スタックは使わない。
 JSON形状:
-{"shouldSpeak":boolean,"skipReason":string,"headline":string,"summary":string,"insights":[{"id":string,"tab":"rotation"|"aim"|"abilities"|"endgame"|"other","timestamp":string,"title":string,"finding":string,"action":string}]}`;
+{"shouldSpeak":boolean,"skipReason":string,"speakMoment":"post-fight"|"standoff"|"mid-range"|"mid-fight","usedScan":boolean,"nextMove":"rotate"|"hold"|"third-party"|"disengage"|"setup","spokenLine":string,"headline":string,"summary":string,"insights":[{"id":string,"tab":"rotation"|"aim"|"abilities"|"endgame"|"other","timestamp":string,"title":string,"finding":string,"action":string}]}`;
   }
   if (mode === "match-chunk") {
     return `${COACHING_BAR}
@@ -85,7 +92,9 @@ export function buildUserText(input: CoachRequest, mode: CoachMode, hasVideo: bo
   lines.push("コーチングは過程と期待値で評価し、結果だけで判断しない。この選手の設定と画面／映像の根拠を必ず使う。");
 
   if (mode === "live") {
-    lines.push("ライブ画面共有のフレームです。今この瞬間に本当に指摘すべきなら shouldSpeak=true。そうでなければ false で注視する。ゲーム内オーバーレイは使いません。");
+    lines.push("ライブ画面共有のフレームです。製品は声。戦闘後レビュー、膠着の詰め、中距離の押し／離脱だけ話す。撃ち合い中の長話はしない。");
+    lines.push("調査ビーコンやreconをファイト前に使っていたら、スキャンの敵位置とアンチと残り時間を spokenLine に入れて次の一手を言え。");
+    lines.push("shouldSpeak=true のとき spokenLine に、辛口で短い日本語を書く。タブも通知も出さない。ゲーム内オーバーレイは使いません。");
     if (hasFrames) lines.push(`静止画 ${input.frames?.length ?? 0} 枚を添付しています。`);
     const recent = input.recentCues?.map((cue) => cue.trim()).filter(Boolean) ?? [];
     if (recent.length > 0) {

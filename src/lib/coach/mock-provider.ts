@@ -1,3 +1,4 @@
+import { looksLikeSurveyBeacon } from "../live-speech.ts";
 import { formatTimestamp, shiftTimestamp } from "../match-plan.ts";
 import { mergeSimilarInsights, withInsightTab } from "./insight-tabs.ts";
 import { isEmptyRotation, summarizeRotationTimeline } from "./rotation.ts";
@@ -287,10 +288,36 @@ function buildLiveResponse(input: CoachRequest): CoachResponse {
       kind: "live",
       shouldSpeak: false,
       skipReason: "フレームなし",
+      spokenLine: "",
       headline: "注視中",
       summary:
         "共有フレームが届いていません。ゲームウィンドウを選び、チート対策で黒画面になっていないか確認してください。",
       insights: [],
+    };
+  }
+  if (looksLikeSurveyBeacon(concern) && (input.recentCues?.length ?? 0) === 0) {
+    return {
+      analysisId: crypto.randomUUID(),
+      game: input.game,
+      character: input.character,
+      kind: "live",
+      shouldSpeak: true,
+      speakMoment: "post-fight",
+      usedScan: true,
+      nextMove: "third-party",
+      spokenLine: `${input.rank}の${input.character}、スキャンで西に2隊。第4リング残り40秒。今は漁夫。正面の撃ち合いに飛び込むな。`,
+      headline: `${input.character} ライブ · ${input.rank}`,
+      summary: `${input.rank}の${input.character}。調査ビーコンの敵位置とアンチ残りを使った次の一手。悩み「${concern}」。`,
+      insights: [
+        {
+          id: "scan-next",
+          tab: "rotation",
+          timestamp: "now",
+          title: "スキャンの西2隊を見て漁夫する",
+          finding: `調査ビーコンで西に2隊。第4リング残り40秒。正面の撃ち合いに入ると第3の的。`,
+          action: "西の撃ち合いが落ちてから入る。ゾーン内側の岩で待つ。",
+        },
+      ],
     };
   }
   if ((input.recentCues?.length ?? 0) > 0) {
@@ -301,6 +328,7 @@ function buildLiveResponse(input: CoachRequest): CoachResponse {
       kind: "live",
       shouldSpeak: false,
       skipReason: "同じ局面の繰り返し",
+      spokenLine: "",
       headline: `${input.character} 注視中 · ${input.rank}`,
       summary: `${input.rank}の${input.character}。直近と同じ判断局面なので話しません。`,
       insights: [],
@@ -312,21 +340,27 @@ function buildLiveResponse(input: CoachRequest): CoachResponse {
     character: input.character,
     kind: "live",
     shouldSpeak: true,
+    speakMoment: isApex ? "mid-range" : "standoff",
+    usedScan: false,
+    nextMove: "disengage",
+    spokenLine: isApex
+      ? `${input.rank}の${input.character}、中距離で2射線開いてる。アンチ内にスペースある。今は切って岩へ。押しは漁夫の的。`
+      : `${input.rank}の${input.character}、heaven残したままスイングしてる。今は壁へ戻れ。詰めはアングル1本にしてから。`,
     headline: `${input.character} ライブ · ${input.rank}`,
     summary: isApex
-      ? `${input.rank}の${input.character}。今見えている射線が2本以上あるので、遮蔽に戻す方が期待値が高い。悩み「${concern}」。`
-      : `${input.rank}の${input.character}。今見えているアングルが2本同時に開いているので、壁に戻す方が期待値が高い。悩み「${concern}」。`,
+      ? `${input.rank}の${input.character}。中距離の膠着。射線が2本、ゾーン内に逃げ場があるので離脱の方が期待値が高い。悩み「${concern}」。`
+      : `${input.rank}の${input.character}。膠着。heavenが残っているので壁に戻して1アングルだけ切る方が期待値が高い。悩み「${concern}」。`,
     insights: [
       {
         id: "now-peek",
-        tab: "aim",
+        tab: "endgame",
         timestamp: "now",
-        title: isApex ? "岩の左端へ戻して射線を1本にする" : "壁へ戻して1アングルだけ切る",
+        title: isApex ? "中距離は切って岩へ戻す" : "壁へ戻して1アングルだけ切る",
         finding: isApex
-          ? `${input.character}のレティクルがオープンを向いたまま、味方のトレード射程の外にいる。見えている人数が2なら今は切る。`
+          ? `${input.character}のレティクルがオープンを向いたまま、味方のトレード射程の外。第3の射線が右に残る。ゾーン内に遮蔽がある。`
           : `${input.character}のクロスヘアが広いスイングの途中で heaven が残っている。見えている情報では1ラインだけ切る方が高い。`,
         action: isApex
-          ? "スライドを止めて岩に張り、見える敵が1人になってから腰撃ち。死んだら責めるのではなく、開いた射線数を直す。"
+          ? "スライドを止めて岩に張り、見える敵が1人になってから腰撃ち。拡張は他隊の射線が消えてから。"
           : "2歩下がって壁でheavenを隠し、止まって2発だけ撃つ。キル結果ではなく開いたアングル数で評価する。",
       },
     ],

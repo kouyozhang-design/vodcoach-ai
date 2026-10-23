@@ -13,6 +13,12 @@ export type RotationIntent = (typeof ROTATION_INTENTS)[number];
 export type CoachMode = "clip" | "match-chunk" | "match-merge" | "live";
 export type CoachReportKind = "clip" | "match" | "live" | "notes";
 
+export const LIVE_SPEAK_MOMENTS = ["post-fight", "standoff", "mid-range", "mid-fight"] as const;
+export type LiveSpeakMoment = (typeof LIVE_SPEAK_MOMENTS)[number];
+
+export const LIVE_NEXT_MOVES = ["rotate", "hold", "third-party", "disengage", "setup"] as const;
+export type LiveNextMove = (typeof LIVE_NEXT_MOVES)[number];
+
 export type RotationNote = {
   intent?: RotationIntent;
   ring?: string;
@@ -76,6 +82,12 @@ export type CoachResponse = {
   truncated?: boolean;
   shouldSpeak?: boolean;
   skipReason?: string;
+  /** Short Japanese line for Web Speech. Live product; cards are not. */
+  spokenLine?: string;
+  speakMoment?: LiveSpeakMoment;
+  /** True when a recon / survey beacon was used before this window. */
+  usedScan?: boolean;
+  nextMove?: LiveNextMove;
   rotation?: RotationNote;
   rotationStory?: string;
 };

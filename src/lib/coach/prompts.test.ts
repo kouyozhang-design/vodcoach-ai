@@ -26,6 +26,13 @@ test("live prompt speaks only on real cues", () => {
   assert.match(prompt, /shouldSpeak/);
   assert.match(prompt, /recentCues/);
   assert.match(prompt, /空配列/);
+  assert.match(prompt, /spokenLine/);
+  assert.match(prompt, /post-fight/);
+  assert.match(prompt, /standoff/);
+  assert.match(prompt, /mid-range/);
+  assert.match(prompt, /調査ビーコン/);
+  assert.match(prompt, /辛口/);
+  assert.match(prompt, /種類タブ/);
 });
 
 test("match-chunk prompt allows zero timestamped tips and always records rotation", () => {
@@ -117,4 +124,6 @@ test("live user text includes recent cues for dedupe", () => {
   );
   assert.match(text, /直近に出した指摘/);
   assert.match(text, /岩の左端へ戻す/);
+  assert.match(text, /調査ビーコン/);
+  assert.match(text, /アンチ/);
 });

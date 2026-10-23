@@ -2,15 +2,14 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
-  AlertCircle, Monitor, MonitorOff, Radio, Shield, Square,
+  AlertCircle, Monitor, MonitorOff, Radio, Shield, Square, Volume2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { InsightCard } from "@/components/insight-card";
 import { requestCoach } from "@/lib/coach/client";
 import { decideLiveCue, recentCueLabels, rememberCues } from "@/lib/coach/live-cues";
-import type { CoachFrame, CoachResponse } from "@/lib/coach/types";
+import type { CoachFrame } from "@/lib/coach/types";
 import {
   LIVE_INTERVAL_MS,
   canCaptureDisplay,
@@ -19,12 +18,15 @@ import {
   liveCaptureErrorMessage,
   startDisplayCapture,
 } from "@/lib/live-capture";
+import { canUseSpeech, cancelSpeech, speakJapanese, unlockSpeech } from "@/lib/live-speech";
 import type { GameId } from "@/lib/games";
 
 const ANTI_CHEAT_COPY =
   "VALORANTのVanguardなど、チート対策が画面キャプチャをブロックすると真っ黒になるか、共有自体が失敗します。その環境ではライブコーチは動きません。";
 const WINDOWED_COPY =
-  "ゲームはフルスクリーン専有ではなく、ボーダーレスまたはウィンドウ表示にしてください。コーチングはこのページのパネルに出ます。ゲーム画面の上には何も描きません。フルスクリーンのままだと、このパネルを見るには第二画面が必要です。";
+  "ゲームはフルスクリーン専有ではなく、ボーダーレスまたはウィンドウ表示にしてください。コーチングは声です。ゲーム画面の上には何も描きません。このタブを見なくても大丈夫です。";
+const GESTURE_COPY =
+  "音声を出すには、下のボタンを押してください。ブラウザは操作なしでは話しません。";
 
 type LiveStatus = "idle" | "capturing" | "coaching" | "error";
 
@@ -42,7 +44,9 @@ export function LiveSession({
   const [status, setStatus] = useState<LiveStatus>("idle");
   const [error, setError] = useState("");
   const [warning, setWarning] = useState("");
-  const [result, setResult] = useState<CoachResponse | null>(null);
+  const [lastLine, setLastLine] = useState("");
+  const [speaking, setSpeaking] = useState(false);
+  const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [watching, setWatching] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [tick, setTick] = useState(0);
@@ -54,14 +58,17 @@ export function LiveSession({
   const blackStreak = useRef(0);
   const recentPrints = useRef<string[]>([]);
   const recentLabels = useRef<string[]>([]);
+  const readOnceRef = useRef<() => Promise<void>>(async () => undefined);
   const configRef = useRef({ game, rank, character, concern });
   const captureOk = useSyncExternalStore(() => () => undefined, canCaptureDisplay, () => false);
+  const speechOk = useSyncExternalStore(() => () => undefined, canUseSpeech, () => false);
   configRef.current = { game, rank, character, concern };
 
   useEffect(() => {
     return () => {
       cancelled.current = true;
       coachAbort.current?.abort();
+      cancelSpeech();
       stopStream();
     };
   }, []);
@@ -77,7 +84,8 @@ export function LiveSession({
   async function startSharing() {
     setError("");
     setWarning("");
-    setResult(null);
+    setLastLine("");
+    setSpeaking(false);
     setWatching(false);
     recentPrints.current = [];
     recentLabels.current = [];
@@ -85,6 +93,11 @@ export function LiveSession({
       setError("このブラウザでは画面共有が使えません。PCの Chrome または Edge で開いてください。スマホではライブコーチは使えません。");
       setStatus("error");
       return;
+    }
+    const unlocked = unlockSpeech();
+    setAudioUnlocked(unlocked || canUseSpeech());
+    if (!canUseSpeech()) {
+      setWarning("このブラウザは音声合成に対応していません。Chrome または Edge で開くと、日本語で話せます。");
     }
     try {
       const stream = await startDisplayCapture();
@@ -96,8 +109,10 @@ export function LiveSession({
       }
       stream.getVideoTracks()[0]?.addEventListener("ended", () => {
         if (cancelled.current) return;
+        cancelSpeech();
         stopStream();
         setStatus("idle");
+        setSpeaking(false);
         setError("画面共有が終了しました。続ける場合は、ゲームウィンドウをウィンドウ表示またはボーダーレスにして再共有してください。");
       });
       setSharing(true);
@@ -112,8 +127,30 @@ export function LiveSession({
   }
 
   function stopSharing() {
+    cancelSpeech();
     stopStream();
+    setSpeaking(false);
     setStatus("idle");
+  }
+
+  function talk(line: string) {
+    setLastLine(line);
+    if (!canUseSpeech()) {
+      setSpeaking(false);
+      return;
+    }
+    const started = speakJapanese(line, {
+      onstart: () => {
+        if (!cancelled.current) setSpeaking(true);
+      },
+      onend: () => {
+        if (!cancelled.current) setSpeaking(false);
+      },
+      onerror: () => {
+        if (!cancelled.current) setSpeaking(false);
+      },
+    });
+    if (!started) setSpeaking(false);
   }
 
   async function readOnce() {
@@ -164,12 +201,12 @@ export function LiveSession({
       );
       if (!cancelled.current) {
         const decision = decideLiveCue(payload, recentPrints.current);
-        if (decision.speak) {
-          recentPrints.current = rememberCues(recentPrints.current, payload.insights);
-          recentLabels.current = recentCueLabels(payload.insights);
-          setResult(payload);
+        if (decision.speak && decision.spokenLine) {
+          recentPrints.current = rememberCues(recentPrints.current, payload.insights, decision.spokenLine);
+          recentLabels.current = recentCueLabels(payload.insights, decision.spokenLine);
           setWatching(false);
           setTick((value) => value + 1);
+          talk(decision.spokenLine);
         } else {
           setWatching(true);
         }
@@ -184,11 +221,12 @@ export function LiveSession({
       if (!cancelled.current && streamRef.current) setStatus("capturing");
     }
   }
+  readOnceRef.current = readOnce;
 
   useEffect(() => {
     if (!sharing) return;
     const timer = window.setInterval(() => {
-      void readOnce();
+      void readOnceRef.current();
     }, LIVE_INTERVAL_MS);
     return () => window.clearInterval(timer);
   }, [sharing]);
@@ -199,8 +237,8 @@ export function LiveSession({
         <div className="p-4 sm:p-5">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold">PCライブ · 画面共有</p>
-              <p className="mt-1 text-[11px] text-zinc-600">デスクトップ向け。ゲーム内HUDへの重ね描きはありません。</p>
+              <p className="text-sm font-semibold">PCライブ · 音声コーチ</p>
+              <p className="mt-1 text-[11px] text-zinc-600">デスクトップ向け。タブも通知も出しません。声だけです。</p>
             </div>
             {sharing && (
               <Badge className="border border-red-500/20 bg-red-500/10 text-[10px] text-red-300">
@@ -233,6 +271,7 @@ export function LiveSession({
           <div className="mt-4 space-y-2 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 text-[11px] leading-5 text-zinc-500">
             <p>{WINDOWED_COPY}</p>
             <p>{ANTI_CHEAT_COPY}</p>
+            <p>{GESTURE_COPY}</p>
           </div>
 
           {error && (
@@ -264,80 +303,60 @@ export function LiveSession({
                 onClick={() => void startSharing()}
                 className="h-12 flex-1 rounded-xl bg-gradient-to-r from-red-600 to-red-500 text-white hover:from-red-500 hover:to-red-400"
               >
-                <Monitor className="size-4" />
-                画面共有を開始
+                <Volume2 className="size-4" />
+                画面共有して音声を開始
               </Button>
             )}
           </div>
           <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[9px] text-zinc-700">
             <Shield className="size-3 shrink-0" />
-            画面は高頻度でJPEGとして送ります。話すのは本当に指摘すべき局面だけです。キーはブラウザに出しません。
+            画面は高頻度でJPEGとして送ります。話すのは戦闘後と膠着の詰めだけです。キーはブラウザに出しません。
           </p>
         </div>
       </Card>
 
       <Card className="min-h-[520px] overflow-hidden border-white/[0.08] bg-[#0e0e10]/95 p-0 text-white shadow-2xl shadow-black/40 sm:min-h-[620px]">
-        {!sharing && !result && (
+        {!sharing && !lastLine && (
           <div className="flex min-h-[520px] flex-col items-center justify-center px-6 py-10 text-center sm:min-h-[620px] sm:px-8">
             <div className="relative">
               <div className="absolute -inset-7 rounded-full bg-red-500/10 blur-2xl" />
               <div className="relative grid size-16 place-items-center rounded-2xl border border-white/[0.08] bg-white/[0.03]">
-                {captureOk ? <Radio className="size-6 text-red-400" /> : <MonitorOff className="size-6 text-zinc-500" />}
+                {captureOk ? <Volume2 className="size-6 text-red-400" /> : <MonitorOff className="size-6 text-zinc-500" />}
               </div>
             </div>
             <p className="mt-6 text-base font-semibold">
-              {captureOk ? "プレイしながら、このパネルが更新されます" : "この端末ではライブキャプチャに非対応です"}
+              {captureOk ? "試合中は声だけ聞いていればいい" : "この端末ではライブキャプチャに非対応です"}
             </p>
             <p className="mt-2 max-w-sm text-xs leading-5 text-zinc-600">
               {captureOk
-                ? "画面は高頻度で読みます。話すのは本当に指摘すべき局面だけです。それ以外はこのパネルが「注視中」のままです。ゲームの上にはオーバーレイを出しません。"
+                ? "戦闘が終わったあと、または膠着で詰めを考えるときだけ話します。種類タブも通知も出しません。音声を出すには、画面共有ボタンを押してください。"
                 : "PCの Chrome / Edge で開いてください。iPhone / iPad と多くのモバイルブラウザでは getDisplayMedia が使えません。"}
             </p>
           </div>
         )}
 
-        {sharing && !result && (
+        {(sharing || lastLine) && (
           <div className="flex min-h-[520px] flex-col items-center justify-center px-6 text-center sm:min-h-[620px]">
-            <Radio className={`size-8 text-red-400 ${status === "coaching" ? "animate-pulse" : ""}`} />
-            <p className="mt-6 text-lg font-semibold">注視中</p>
-            <p className="mt-2 max-w-sm text-xs leading-5 text-zinc-600">
-              {status === "coaching"
-                ? "画面を読んでいます。勝敗やキルだけでは話しません。"
-                : "局面を待っています。指摘すべき判断があるときだけこのパネルを更新します。"}
+            <Radio className={`size-8 text-red-400 ${speaking || status === "coaching" ? "animate-pulse" : ""}`} />
+            <p className="mt-6 text-lg font-semibold">
+              {speaking ? "いま話しています" : watching || sharing ? "注視中" : "音声コーチ"}
             </p>
-          </div>
-        )}
-
-        {result && (
-          <div className="animate-in fade-in duration-500">
-            <div className="flex items-center justify-between border-b border-white/[0.06] px-5 py-4 sm:px-6">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className={`size-1.5 rounded-full ${watching ? "bg-zinc-500" : "animate-pulse bg-emerald-400"}`} />
-                  <p className="text-sm font-semibold">{result.headline}</p>
-                </div>
-                <p className="mt-1 pl-3.5 font-mono text-[9px] text-zinc-700">
-                  {watching ? "WATCHING" : "LIVE"} · tick {tick}
-                </p>
-              </div>
-              <Badge
-                className={
-                  watching
-                    ? "border border-white/10 bg-white/[0.04] text-[9px] text-zinc-400"
-                    : "border border-emerald-500/15 bg-emerald-500/10 text-[9px] text-emerald-400"
-                }
-              >
-                {status === "coaching" ? "READING" : watching ? "注視中" : "LIVE"}
-              </Badge>
-            </div>
-            <div className="p-5 sm:p-6">
-              <p className="text-sm leading-6 text-zinc-300">{result.summary}</p>
-              <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                {result.insights.map((insight, index) => (
-                  <InsightCard key={`${insight.id}-${tick}-${index}`} insight={insight} index={index} instant />
-                ))}
-              </div>
-            </div>
+            <p className="mt-2 max-w-sm text-xs leading-5 text-zinc-600">
+              {speaking
+                ? "試合から目を離さないでください。声だけ拾えばいいです。"
+                : status === "coaching"
+                  ? "画面を読んでいます。撃ち合いの最中は、短い一言以外は黙ります。"
+                  : "膠着の詰めと、戦闘後のレビューだけ話します。"}
+            </p>
+            {lastLine ? (
+              <p className="mt-8 max-w-md text-sm leading-6 text-zinc-200" aria-live="polite">
+                {lastLine}
+              </p>
+            ) : null}
+            <p className="mt-6 font-mono text-[9px] text-zinc-700">
+              {speaking ? "SPEAKING" : watching ? "WATCHING" : "LIVE"} · tick {tick}
+              {audioUnlocked && speechOk ? " · AUDIO" : ""}
+            </p>
           </div>
         )}
       </Card>

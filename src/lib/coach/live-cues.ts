@@ -1,5 +1,6 @@
 import { normalizeCoachText } from "./bar.ts";
-import type { CoachInsight, CoachResponse } from "./types.ts";
+import { spokenLineForCue } from "../live-speech.ts";
+import type { CoachInsight, CoachResponse, LiveSpeakMoment } from "./types.ts";
 
 export const LIVE_RECENT_LIMIT = 4;
 
@@ -41,21 +42,24 @@ export function isNearDuplicate(left: string, right: string) {
   return overlap / Math.min(A.size, B.size) >= 0.72;
 }
 
-export function isRepeatCue(insights: CoachInsight[], recentFingerprints: string[]) {
-  if (insights.length === 0 || recentFingerprints.length === 0) return false;
-  const nextPrint = insightsFingerprint(insights);
-  if (recentFingerprints.some((previous) => isNearDuplicate(previous, nextPrint))) return true;
-  return insights.some((insight) => {
-    const print = cueFingerprint(insight);
-    return recentFingerprints.some((previous) => isNearDuplicate(previous, print));
-  });
+export function isRepeatCue(insights: CoachInsight[], recentFingerprints: string[], spokenLine = "") {
+  const prints: string[] = [];
+  if (spokenLine) prints.push(normalizeCoachText(spokenLine));
+  prints.push(insightsFingerprint(insights));
+  for (const insight of insights) prints.push(cueFingerprint(insight));
+  const next = prints.filter(Boolean);
+  if (next.length === 0 || recentFingerprints.length === 0) return false;
+  return next.some((print) => recentFingerprints.some((previous) => isNearDuplicate(previous, print)));
 }
 
-export function rememberCues(recentFingerprints: string[], insights: CoachInsight[]) {
+export function rememberCues(
+  recentFingerprints: string[],
+  insights: CoachInsight[],
+  spokenLine = "",
+) {
   const next = [...recentFingerprints];
-  for (const insight of insights) {
-    const print = cueFingerprint(insight);
-    if (!print) continue;
+  const extras = [spokenLine ? normalizeCoachText(spokenLine) : "", ...insights.map(cueFingerprint)].filter(Boolean);
+  for (const print of extras) {
     const index = next.findIndex((item) => isNearDuplicate(item, print));
     if (index >= 0) next.splice(index, 1);
     next.push(print);
@@ -63,18 +67,38 @@ export function rememberCues(recentFingerprints: string[], insights: CoachInsigh
   return next.slice(-LIVE_RECENT_LIMIT);
 }
 
-export function recentCueLabels(insights: CoachInsight[]) {
-  return insights.map(cueLabel).filter(Boolean).slice(0, LIVE_RECENT_LIMIT);
+export function recentCueLabels(insights: CoachInsight[], spokenLine = "") {
+  const labels = spokenLine ? [spokenLine.replace(/\s+/g, " ").trim().slice(0, 160)] : [];
+  for (const insight of insights) {
+    const label = cueLabel(insight);
+    if (label) labels.push(label);
+  }
+  return labels.filter(Boolean).slice(0, LIVE_RECENT_LIMIT);
 }
 
 export type LiveCueDecision = {
   speak: boolean;
-  reason: "speak" | "model-skip" | "empty" | "repeat";
+  reason: "speak" | "model-skip" | "empty" | "repeat" | "lecture";
+  spokenLine?: string;
+  speakMoment?: LiveSpeakMoment;
 };
 
 export function decideLiveCue(response: CoachResponse, recentFingerprints: string[]): LiveCueDecision {
   if (response.shouldSpeak === false) return { speak: false, reason: "model-skip" };
-  if (response.insights.length === 0) return { speak: false, reason: "empty" };
-  if (isRepeatCue(response.insights, recentFingerprints)) return { speak: false, reason: "repeat" };
-  return { speak: true, reason: "speak" };
+  const spokenLine = spokenLineForCue(response);
+  const hasInsight = response.insights.length > 0;
+  if (!spokenLine && !hasInsight) return { speak: false, reason: "empty" };
+  if (!spokenLine && hasInsight && response.speakMoment === "mid-fight") {
+    return { speak: false, reason: "lecture" };
+  }
+  if (!spokenLine) return { speak: false, reason: "empty" };
+  if (isRepeatCue(response.insights, recentFingerprints, spokenLine)) {
+    return { speak: false, reason: "repeat" };
+  }
+  return {
+    speak: true,
+    reason: "speak",
+    spokenLine,
+    speakMoment: response.speakMoment,
+  };
 }

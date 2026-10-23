@@ -158,6 +158,9 @@ test("mock live speaks once then skips repeats via recentCues", async () => {
   });
   assert.equal(first.shouldSpeak, true);
   assert.ok(first.insights.length > 0);
+  assert.equal(first.speakMoment, "mid-range");
+  assert.equal(first.nextMove, "disengage");
+  assert.match(first.spokenLine ?? "", /中距離/);
   assert.match(first.summary, /Platinum/);
   assert.match(first.summary, /Wraith/);
   assert.match(first.summary, /近距離で遮蔽/);
@@ -171,4 +174,20 @@ test("mock live speaks once then skips repeats via recentCues", async () => {
   assert.equal(second.shouldSpeak, false);
   assert.equal(second.insights.length, 0);
   assert.match(second.headline, /注視中/);
+});
+
+test("mock live uses survey beacon scan for the next move", async () => {
+  const { spokenLineUsesScan } = await import("../live-speech.ts");
+  const scanned = await videoCoachProvider.analyze({
+    ...base,
+    concern: "調査ビーコンを踏んでから中距離で詰める",
+    mode: "live",
+    frames: [{ timestamp: 1, mimeType: "image/jpeg", dataUrl: "data:image/jpeg;base64,aa" }],
+  });
+  assert.equal(scanned.shouldSpeak, true);
+  assert.equal(scanned.usedScan, true);
+  assert.equal(scanned.speakMoment, "post-fight");
+  assert.equal(scanned.nextMove, "third-party");
+  assert.equal(spokenLineUsesScan(scanned.spokenLine ?? ""), true);
+  assert.match(scanned.spokenLine ?? "", /第4リング残り40秒/);
 });

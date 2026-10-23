@@ -478,7 +478,7 @@ export default function Home() {
             試合一本も、プレイ中も、<span className="inline-block bg-gradient-to-r from-red-300 via-red-500 to-orange-400 bg-clip-text text-transparent">映像から改善。</span>
           </h1>
           <p className="mt-4 max-w-2xl text-sm leading-6 text-zinc-500">
-            Apex LegendsとVALORANT。短いクリップ・試合一本・ライブは同じ基準です。見えていた情報と期待値で判断し、改善点の数だけカードを出します。長い試合は種類タブと試合全体の回転で読みます。PCでは画面共有でライブ指摘も出せます。
+            Apex LegendsとVALORANT。短いクリップ・試合一本・ライブは同じ基準です。見えていた情報と期待値で判断し、改善点の数だけカードを出します。長い試合は種類タブと試合全体の回転で読みます。PCライブは画面共有で、戦闘後と膠着だけ声で話します。
           </p>
           <div className="mt-6 inline-flex rounded-full border border-white/[0.08] bg-white/[0.03] p-1">
             <button

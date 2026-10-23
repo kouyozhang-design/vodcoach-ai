@@ -2,11 +2,14 @@ import { isPrivateBlobUrl } from "@/lib/blob";
 import { readableVideoUrl, readPrivateVideoBytes, sniffPrivateVideo } from "@/lib/blob-read";
 import { formatTimestamp } from "@/lib/match-plan";
 import { mimeFromFileName } from "@/lib/video";
+import { spokenLineForCue, parseNextMove, parseSpeakMoment } from "../live-speech";
 import { insightsFromParsed } from "./insight-tabs";
 import { buildUserText, systemPrompt } from "./prompts";
 import { parseRotation } from "./rotation";
 import {
   INSIGHT_TAB_IDS,
+  LIVE_NEXT_MOVES,
+  LIVE_SPEAK_MOMENTS,
   ROTATION_INTENTS,
   resolveCoachMode,
   type CoachMode,
@@ -358,6 +361,10 @@ function schemaFor(mode: CoachMode) {
   if (mode === "live") {
     properties.shouldSpeak = { type: "BOOLEAN" };
     properties.skipReason = { type: "STRING" };
+    properties.spokenLine = { type: "STRING" };
+    properties.speakMoment = { type: "STRING", enum: [...LIVE_SPEAK_MOMENTS] };
+    properties.usedScan = { type: "BOOLEAN" };
+    properties.nextMove = { type: "STRING", enum: [...LIVE_NEXT_MOVES] };
     required.push("shouldSpeak");
   }
   if (mode === "match-chunk") {
@@ -407,12 +414,24 @@ function toCoachResponse(parsed: Record<string, unknown>, input: CoachRequest, m
     kind,
   };
   if (mode === "live") {
+    const speakMoment = parseSpeakMoment(parsed.speakMoment);
+    if (speakMoment) response.speakMoment = speakMoment;
+    const nextMove = parseNextMove(parsed.nextMove);
+    if (nextMove) response.nextMove = nextMove;
+    if (parsed.usedScan === true) response.usedScan = true;
+    if (parsed.usedScan === false) response.usedScan = false;
+    response.spokenLine = stringify(parsed.spokenLine);
+    const spoken = spokenLineForCue(response);
     const explicitSkip = parsed.shouldSpeak === false;
-    response.shouldSpeak = !explicitSkip && insights.length > 0;
+    response.shouldSpeak = !explicitSkip && Boolean(spoken);
     const skipReason = stringify(parsed.skipReason);
     if (!response.shouldSpeak) {
-      response.skipReason = skipReason || (insights.length === 0 ? "指摘すべき局面なし" : "繰り返し");
+      response.skipReason = skipReason || (insights.length === 0 && !spoken ? "指摘すべき局面なし" : "繰り返し");
       response.insights = [];
+      response.spokenLine = "";
+      delete response.speakMoment;
+    } else {
+      response.spokenLine = spoken;
     }
   }
   if (typeof input.durationSec === "number" && Number.isFinite(input.durationSec)) {
@@ -449,8 +468,8 @@ function fallbackSummary(input: CoachRequest, kind: CoachResponse["kind"], insig
   const who = `${input.rank}の${input.character}`;
   if (kind === "live") {
     return insightCount > 0
-      ? `${who}向けに、今の画面の根拠から次の1手を出します。`
-      : `${who}の画面を注視中。指摘すべき局面だけ話します。`;
+      ? `${who}向けに、戦闘後か膠着のときだけ声で次の1手を出します。`
+      : `${who}の画面を注視中。戦闘後と膠着だけ話します。`;
   }
   if (kind === "match") {
     return insightCount > 0
