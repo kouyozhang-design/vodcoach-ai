@@ -15,8 +15,11 @@ test("coaching bar forbids outcome-only and slogan coaching", () => {
   assert.match(COACHING_BAR, /階段/);
   assert.match(COACHING_BAR, /確殺/);
   assert.match(COACHING_BAR, /武器/);
+  assert.match(COACHING_BAR, /見えていなくても提案/);
+  assert.doesNotMatch(COACHING_BAR, /地点は特定できない/);
   assert.match(FIGHT_EXPLAIN, /解説ができた/);
   assert.match(FIGHT_EXPLAIN, /closeRangeFights/);
+  assert.match(FIGHT_EXPLAIN, /見えていなくても提案/);
 });
 
 test("looksLikeSlogan catches generic FPS filler", () => {

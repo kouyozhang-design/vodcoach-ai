@@ -171,7 +171,7 @@ export function buildUserText(input: CoachRequest, mode: CoachMode, hasVideo: bo
       `試合VODの区間 ${formatTimestamp(start)}–${formatTimestamp(end)} です。timestamp はこの試合時刻で書いてください。撃ち合いがなければ insights は空配列。rotation は空にしない。`,
     );
     lines.push("この区間の回転の正誤は断定せず、リング・経路・漁夫タイミングの事実を rotation に残す。試合全体の判定は後段のマージが行う。");
-    lines.push("近距離スクラップがあれば closeRangeFights に斜線・段差・ピーク・確殺判断を厚く書く。insights は見えていた情報と期待値のカード。武器名は読めたときだけ。");
+    lines.push("近距離スクラップがあれば closeRangeFights に斜線・段差・ピーク・確殺判断を厚く書く。insights は見えていた情報と期待値のカード。武器名は読めたときだけ。画面外のカバーが良い手なら見えていなくても提案する。");
     if (typeof input.chunkIndex === "number" && typeof input.chunkCount === "number") {
       lines.push(`区間 ${input.chunkIndex + 1}/${input.chunkCount}`);
     }
@@ -183,7 +183,7 @@ export function buildUserText(input: CoachRequest, mode: CoachMode, hasVideo: bo
 
   lines.push(
     hasVideo
-      ? "クリップ動画を添付しています。動画ファイルそのものを見てコーチングしてください。近距離があれば closeRangeFights に斜線・段差・インファイト・確殺を厚く。読めない武器名は書くな。"
+      ? "クリップ動画を添付しています。動画ファイルそのものを見てコーチングしてください。近距離があれば closeRangeFights に斜線・段差・インファイト・確殺を厚く。読めない武器名は書くな。画面外のカバーが良い手なら見えていなくても提案する。"
       : "動画なし。ノートコーチングです。悩み文を、そのランクとそのキャラの判断として具体化してください。closeRangeFights は空。",
   );
   if (input.videoUrl && hasVideo) {

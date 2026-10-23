@@ -37,9 +37,9 @@ export function resolveCoachLanguage(input: { language?: unknown }): CoachLangua
 
 export function languageInstruction(language: CoachLanguage) {
   if (language === "en") {
-    return "Write every user-facing string in English: headline, summary, spokenLine, insight title/finding/action, rotation notes, rotationStory, closeRangeFights title/sightlines/knowHow. JSON keys stay English. Tone: sharp and funny. Short sentences. Same pro-team bar. No generic slogans. Name a gun only when the HUD or model is readable. A lip/headglitch is not stairs. An Apex knock is not a kill — finish, reset, or third-party.";
+    return "Write every user-facing string in English: headline, summary, spokenLine, insight title/finding/action, rotation notes, rotationStory, closeRangeFights title/sightlines/knowHow. JSON keys stay English. Tone: sharp and funny. Short sentences. Same pro-team bar. No generic slogans. Name a gun only when the HUD or model is readable. A lip/headglitch is not stairs. An Apex knock is not a kill — finish, reset, or third-party. If off-screen cover, a door, or an angle is the better play, propose it even when it is not in frame. Do not invent a layout that contradicts the footage.";
   }
-  return "ユーザー向け文字列はすべて日本語。headline, summary, spokenLine, insight の title/finding/action, rotation, rotationStory, closeRangeFights の title/sightlines/knowHow。JSONキーは英語のまま。口調は辛口で面白い。短文。プロチームの過程と期待値。汎用スローガン禁止。武器名はHUDかモデルが読めたときだけ。段差と階段を取り違えるな。Apexのノックはキルではない。確殺／リセット／漁夫を選べ。";
+  return "ユーザー向け文字列はすべて日本語。headline, summary, spokenLine, insight の title/finding/action, rotation, rotationStory, closeRangeFights の title/sightlines/knowHow。JSONキーは英語のまま。口調は辛口で面白い。短文。プロチームの過程と期待値。汎用スローガン禁止。武器名はHUDかモデルが読めたときだけ。段差と階段を取り違えるな。Apexのノックはキルではない。確殺／リセット／漁夫を選べ。画面外のカバー・ドア・アングルが良い手なら、今見えていなくても提案する。映像に反する間取りは作るな。";
 }
 
 export function fightChrome(language: CoachLanguage) {

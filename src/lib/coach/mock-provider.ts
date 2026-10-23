@@ -408,7 +408,7 @@ function buildClipFights(
         start: "00:10",
         end: "00:18",
         title: isApex ? "Front door peek instead of the off-angle" : "Swings heaven with the off-angle empty",
-        sightlines: `${who} at 00:12. Off-angle sits on the right rock lip (a step, not stairs). You take the front peek. Enemy owns that peek. Cover is one step left. Teammates can trade only the left line. POI is the rock door if the minimap names it; otherwise say the point is unsure.`,
+        sightlines: `${who} at 00:12. Off-angle sits on the right rock lip (a step, not stairs). You take the front peek. Enemy owns that peek. Cover is one step left. Teammates can trade only the left line. If the better play is the door or cover off-frame, say so even when it is not on screen.`,
         knowHow: "Reset to one body visible. Utility before the swing. Shoot door first, then the cover player. A knock is not a kill — thirst, reset, or third-party. Gun stays unnamed unless the HUD is readable.",
       },
     ];
@@ -419,7 +419,7 @@ function buildClipFights(
       start: "00:10",
       end: "00:18",
       title: isApex ? "岩右のオフアングルを捨てて正面ピーク" : "オフアングルを空にしてheavenを開く",
-      sightlines: `00:12、${who}。岩の右は段差（リップ）で階段ではない。オフアングルがあるのに正面を開いている。ピークの権利は正面の敵。カバーは左へ1歩。味方がトレードできるのは左の1本だけ。地点はミニマップで岩扉と読めるときだけ使え。`,
+      sightlines: `00:12、${who}。岩の右は段差（リップ）で階段ではない。オフアングルがあるのに正面を開いている。ピークの権利は正面の敵。カバーは左へ1歩。味方がトレードできるのは左の1本だけ。画面外の扉やカバーが期待値なら、今見えていなくても提案する。`,
       knowHow: "見える体を1人に削ってから出せ。タクティカルはスイング前。撃つ順はドア→カバー側。ノックはキルではない。確殺／リセット／漁夫を選べ。HUDが読めていない銃の固有名は書くな。",
     },
   ];
