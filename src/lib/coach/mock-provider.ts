@@ -163,12 +163,12 @@ function buildMatchChunkResponse(input: CoachRequest): CoachResponse {
       id: "close",
       tab: "endgame",
       timestamp: shiftTimestamp(formatTimestamp(end - 2), start, end),
-      title: isApex ? "ダウンを取ったあとの詰めが甘い" : "サイトを取ったあとのクローズが遅い",
+      title: isApex ? "ノックしたあとの確殺を捨てている" : "サイトを取ったあとのクローズが遅い",
       finding: isApex
-        ? `${formatTimestamp(end - 2)}、${input.rank}の${input.character}は撃ち合いに勝ったあとも同じ角度に残っている。リセットせず詰め切らないので、第三者に期待値を渡している。`
+        ? `${formatTimestamp(end - 2)}、${input.rank}の${input.character}はノックしただけでファイトを終わったつもりになっている。ダウンした体は残っている。確殺せず同じ角度にいるので、漁夫に期待値を渡している。`
         : `${formatTimestamp(end - 2)}、${input.rank}の${input.character}はキル後も同じアングルに残り、サイトの裏を閉じていない。勝ったことではなく、閉じる順番が遅い。`,
       action: isApex
-        ? "ダウン確認の1秒後にスライドで角度を変え、残りの1人をカバー側へ追い込む。勝利クリップでも詰めの期待値を見る。"
+        ? "ノック確認の1秒後に角度を変え、ダウンを確殺するか、銃声と人数でリセット／漁夫を選べ。ノックをキルと言うな。"
         : "キル後は2歩サイト内へ入り、heavenを消してからプラント。勝ったラウンドでもクローズの順番を直す。",
     },
   ];
@@ -408,8 +408,8 @@ function buildClipFights(
         start: "00:10",
         end: "00:18",
         title: isApex ? "Front door peek instead of the off-angle" : "Swings heaven with the off-angle empty",
-        sightlines: `${who} at 00:12. Off-angle sits on the right rock/jamb. You take the front peek. Enemy owns that peek. Cover is one step left. Teammates can trade only the left line.`,
-        knowHow: "Reset to one body visible. Utility before the swing. Shoot door first, then the cover player. Second target after the nade, not during the first burst.",
+        sightlines: `${who} at 00:12. Off-angle sits on the right rock lip (a step, not stairs). You take the front peek. Enemy owns that peek. Cover is one step left. Teammates can trade only the left line. POI is the rock door if the minimap names it; otherwise say the point is unsure.`,
+        knowHow: "Reset to one body visible. Utility before the swing. Shoot door first, then the cover player. A knock is not a kill — thirst, reset, or third-party. Gun stays unnamed unless the HUD is readable.",
       },
     ];
   }
@@ -419,8 +419,8 @@ function buildClipFights(
       start: "00:10",
       end: "00:18",
       title: isApex ? "岩右のオフアングルを捨てて正面ピーク" : "オフアングルを空にしてheavenを開く",
-      sightlines: `00:12、${who}。岩／枠の右にオフアングルがあるのに正面を開いている。ピークの権利は正面の敵。カバーは左へ1歩。味方がトレードできるのは左の1本だけ。`,
-      knowHow: "見える体を1人に削ってから出せ。タクティカルはスイング前。撃つ順はドア→カバー側。2人目はユーティリティ後。最初のバースト中に持ち替えるな。",
+      sightlines: `00:12、${who}。岩の右は段差（リップ）で階段ではない。オフアングルがあるのに正面を開いている。ピークの権利は正面の敵。カバーは左へ1歩。味方がトレードできるのは左の1本だけ。地点はミニマップで岩扉と読めるときだけ使え。`,
+      knowHow: "見える体を1人に削ってから出せ。タクティカルはスイング前。撃つ順はドア→カバー側。ノックはキルではない。確殺／リセット／漁夫を選べ。HUDが読めていない銃の固有名は書くな。",
     },
   ];
 }
@@ -434,9 +434,9 @@ function buildChunkFights(input: CoachRequest, start: number, isApex: boolean): 
       id: `scrap-${from}`,
       start: from,
       end: to,
-      title: isApex ? "カバーを離れて2本の斜線を同時に開く" : "壁を離れて2アングルを同時に開く",
-      sightlines: `${from}、${who}がカバーを離れた瞬間に左右が開く。ピークは奥の敵。オフアングルは左端に残っているのに使っていない。`,
-      knowHow: "左端へ張り、見える敵を1人にしてからスライド。ユーティリティは出す3秒前。撃つ順はピークを持っている側から。残りの1人は角度を変えてから。",
+      title: isApex ? "段差を捨てて2本の斜線を同時に開く" : "壁を離れて2アングルを同時に開く",
+      sightlines: `${from}、${who}が段差（リップ）を離れた瞬間に左右が開く。階段ではない。ピークは奥の敵。オフアングルは左端に残っているのに使っていない。`,
+      knowHow: "左端の段差へ張り、見える敵を1人にしてからスライド。ユーティリティは出す3秒前。撃つ順はピークを持っている側から。ノックしたら確殺かリセットか漁夫を選べ。キル扱いするな。",
     },
   ];
 }

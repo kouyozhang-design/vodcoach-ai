@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { COACHING_BAR, looksLikeSlogan } from "./bar.ts";
+import { COACHING_BAR, FIGHT_EXPLAIN, looksLikeSlogan } from "./bar.ts";
 
 test("coaching bar forbids outcome-only and slogan coaching", () => {
   assert.match(COACHING_BAR, /期待値/);
@@ -11,6 +11,12 @@ test("coaching bar forbids outcome-only and slogan coaching", () => {
   assert.match(COACHING_BAR, /漁夫/);
   assert.match(COACHING_BAR, /詰め/);
   assert.match(COACHING_BAR, /件数は固定しない/);
+  assert.match(COACHING_BAR, /段差/);
+  assert.match(COACHING_BAR, /階段/);
+  assert.match(COACHING_BAR, /確殺/);
+  assert.match(COACHING_BAR, /武器/);
+  assert.match(FIGHT_EXPLAIN, /解説ができた/);
+  assert.match(FIGHT_EXPLAIN, /closeRangeFights/);
 });
 
 test("looksLikeSlogan catches generic FPS filler", () => {

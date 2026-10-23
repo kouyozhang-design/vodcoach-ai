@@ -34,6 +34,9 @@ test("mock notes and clip stay personalized and are not locked to four ids", asy
   assert.ok(clip.insights.length < 4 || clip.insights.some((insight) => insight.tab !== "other"));
   assert.ok((clip.closeRangeFights ?? []).length >= 1);
   assert.match(clip.closeRangeFights?.[0].sightlines ?? "", /オフアングル|ピーク/);
+  assert.match(clip.closeRangeFights?.[0].sightlines ?? "", /段差/);
+  assert.match(clip.closeRangeFights?.[0].knowHow ?? "", /確殺/);
+  assert.doesNotMatch(clip.closeRangeFights?.[0].sightlines ?? "", /R-301|ヴァンダル/);
   assert.equal((notes.closeRangeFights ?? []).length, 0);
 });
 

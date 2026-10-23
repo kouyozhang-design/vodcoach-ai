@@ -52,13 +52,20 @@ test("clip prompt is not locked to four insight ids", () => {
   assert.match(prompt, /tab は rotation/);
   assert.match(prompt, /closeRangeFights/);
   assert.match(prompt, /オフアングル/);
+  assert.match(prompt, /段差/);
+  assert.match(prompt, /確殺/);
+  assert.match(prompt, /解説ができた/);
 });
 
 test("vod prompts put close-range micro in expanders, live does not", () => {
   assert.match(systemPrompt("match-chunk"), /closeRangeFights/);
   assert.match(systemPrompt("match-chunk"), /斜線/);
+  assert.match(systemPrompt("match-chunk"), /段差/);
   assert.match(systemPrompt("match-merge"), /closeRangeFights/);
+  assert.match(systemPrompt("live"), /確殺/);
+  assert.match(systemPrompt("live"), /武器名/);
   assert.doesNotMatch(systemPrompt("live"), /"closeRangeFights"/);
+  assert.doesNotMatch(systemPrompt("live"), /解説ができた/);
   const mergeText = buildUserText(
     {
       ...sample,
@@ -172,4 +179,5 @@ test("live user text includes recent cues for dedupe", () => {
   assert.match(text, /岩の左端へ戻す/);
   assert.match(text, /調査ビーコン/);
   assert.match(text, /アンチ/);
+  assert.match(text, /ノックはキルではない/);
 });

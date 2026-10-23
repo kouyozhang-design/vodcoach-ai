@@ -31,4 +31,7 @@ test("prompts and cheap chrome switch with language", () => {
   assert.equal(fightChrome("en").knowHow, "In-fight know-how");
   assert.match(languageInstruction("ja"), /closeRangeFights/);
   assert.match(languageInstruction("en"), /closeRangeFights/);
+  assert.match(languageInstruction("ja"), /段差/);
+  assert.match(languageInstruction("ja"), /確殺/);
+  assert.match(languageInstruction("en"), /knock is not a kill/i);
 });

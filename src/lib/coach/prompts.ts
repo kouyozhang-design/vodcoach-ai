@@ -1,6 +1,6 @@
 import { languageInstruction, resolveCoachLanguage } from "../coach-language.ts";
 import { formatTimestamp } from "../match-plan.ts";
-import { COACHING_BAR } from "./bar.ts";
+import { COACHING_BAR, FIGHT_EXPLAIN } from "./bar.ts";
 import { formatRotationLine } from "./rotation.ts";
 import { requestHasClip, type CoachMode, type CoachRequest } from "./types.ts";
 
@@ -40,12 +40,14 @@ mid-fight（撃ち合いの最中）は、1文で終わり、長い講義にな�
 false のときは insights を空配列、spokenLine を空文字、skipReason に短い理由。true のときは spokenLine 必須、insights は0〜1件（内部用。UIには出さない）。
 speakMoment は post-fight | standoff | mid-range | mid-fight。nextMove は rotate | hold | third-party | disengage | setup。
 id は自由。tab は rotation | aim | abilities | endgame | other。timestamp は "now"。
+Apexでノックした直後に話すなら、キルと言わず確殺／リセット／漁夫のどれかを言え。武器名はHUDかモデルが読めたときだけ。
 ゲーム内HUDへ重ねる前提の指示は書かない。recentCues と同じ内容は繰り返さない。種類タブや通知スタックは使わない。
 JSON形状:
 {"shouldSpeak":boolean,"skipReason":string,"speakMoment":"post-fight"|"standoff"|"mid-range"|"mid-fight","usedScan":boolean,"nextMove":"rotate"|"hold"|"third-party"|"disengage"|"setup","spokenLine":string,"headline":string,"summary":string,"insights":[{"id":string,"tab":"rotation"|"aim"|"abilities"|"endgame"|"other","timestamp":string,"title":string,"finding":string,"action":string}]}`;
   }
   if (mode === "match-chunk") {
     return `${COACHING_BAR}
+${FIGHT_EXPLAIN}
 あなたはFPSの試合VODコーチです。指定JSONだけを返します。
 ${langLine}
 渡された時間帯だけを見る。insights は本当に期待値を落としている局面だけ。局面がなければ空配列。0件でよい。件数は固定しない（目安 0〜8）。枠を埋めない。
@@ -59,13 +61,14 @@ rotation は insights が空でも必ず埋める。デスカムや移動だけ�
 - thirdPartyTiming: 第三者が入った／入れたタイミング。無ければ空文字
 - note: 見えていたリング・人数・銃声の事実。この区間の勝敗で褒めたり責めたりしない
 timestamp は試合全体の mm:ss（チャンク先頭からの相対ではなく絶対時間）。
-近距離スクラップがあるときだけ closeRangeFights を出す。1スクラップ = 1件。insights には斜線の細部を詰め込まない。細部は closeRangeFights.sightlines（オフアングル、カバー、誰がピークを持つか）と knowHow（誰を撃つか、ユーティリティのタイミング、インファイトの選択）へ。start/end は試合時刻 mm:ss。無ければ空配列。
+近距離スクラップがあるときだけ closeRangeFights を出す。1スクラップ = 1件。insights には斜線の全文を詰め込まない。sightlines と knowHow は、見えていた斜線・段差・ピークの権利・ユーティリティ・誰を撃つか・ノック後の確殺判断まで具体的に。start/end は試合時刻 mm:ss。無ければ空配列。
 JPEGは補助。動画セグメントがあるときは動画を優先。
 JSON形状:
 {"headline":string,"summary":string,"rotation":{"intent":"zone-first"|"zone-cut"|"third-party"|"unknown","ring":string,"path":string,"thirdPartyTiming":string,"note":string},"insights":[{"id":string,"tab":"rotation"|"aim"|"abilities"|"endgame"|"other","timestamp":string,"title":string,"finding":string,"action":string}],"closeRangeFights":[{"id":string,"start":string,"end":string,"title":string,"sightlines":string,"knowHow":string}]}`;
   }
   if (mode === "match-merge") {
     return `${COACHING_BAR}
+${FIGHT_EXPLAIN}
 あなたはFPSの試合レポート編集者です。指定JSONだけを返します。
 ${langLine}
 区間レポートを1本の試合レポートにまとめる。重複とスローガンと結果論だけを削り、タイムスタンプ付きの具体的な局面だけを残す。0件でもよい。枠を埋めない。
@@ -76,11 +79,12 @@ insights は 1カード = 1つの実在する改善。4枠（aim/positioning/abi
 勝っていても、より高い期待値の詰め／クローズがあれば tab=endgame で出す。キルや勝利を理由に省略しない。
 件数の上限はUI破綻防止のみ（おおよそ36）。埋め草で増やさない。質を優先。
 timestamp は mm:ss のまま。tab は rotation | aim | abilities | endgame | other。
-各区間の closeRangeFights を時系列で残す。類似スクラップは1件にまとめる。insights に斜線細部を再掲しない。
+各区間の closeRangeFights を時系列で残す。薄い要約に潰さず、斜線とインファイトの具体を残す。類似スクラップは1件にまとめる。insights に斜線全文を再掲しない。ノックをキルに書き換えない。
 JSON形状:
 {"headline":string,"summary":string,"rotationStory":string,"insights":[{"id":string,"tab":"rotation"|"aim"|"abilities"|"endgame"|"other","timestamp":string,"title":string,"finding":string,"action":string}],"closeRangeFights":[{"id":string,"start":string,"end":string,"title":string,"sightlines":string,"knowHow":string}]}`;
   }
   return `${COACHING_BAR}
+${FIGHT_EXPLAIN}
 あなたはFPSの動画／ノートコーチです。指定JSONだけを返します。
 ${langLine}
 insights は本当に改善すべき点だけ。件数は固定しない。短いクリップは1〜3件でよい。長いクリップでも枠を埋めない。
@@ -90,7 +94,7 @@ id は自由。tab は rotation | aim | abilities | endgame | other。4枠（aim
 勝っても、より高い期待値の詰め／クローズがあれば tab=endgame で出す。
 勝敗やキルデスだけで褒めたり責めたりしない。汎用スローガンは禁止。
 クリップ動画があるときは映像の時間帯に触れる。JPEGではなく渡された動画そのものを見る。
-近距離スクラップがあるときだけ closeRangeFights。斜線管理（オフアングル、カバー、ピークの権利）と戦闘のノウハウ（誰を撃つか、ユーティリティ、インファイト）は expander 用。insights は高信号の1行に留める。ライブ用ではない。
+近距離スクラップがあるときだけ closeRangeFights。斜線管理（オフアングル、段差、カバー、ピークの権利）と戦闘のノウハウ（誰を撃つか、ユーティリティ、インファイト、ノック後の確殺）は expander 用で厚く。insights は同じ局面の高信号カード（見えていた情報・選択肢・期待値）。斜線の全文は expander へ。ライブ用ではない。
 ノートのみのときは closeRangeFights は空。悩み文をその選手の試合で起きる判断ミスとして具体化する。
 JSON形状:
 {"headline":string,"summary":string,"insights":[{"id":string,"tab":"rotation"|"aim"|"abilities"|"endgame"|"other","timestamp":string,"title":string,"finding":string,"action":string}],"closeRangeFights":[{"id":string,"start":string,"end":string,"title":string,"sightlines":string,"knowHow":string}]}`;
@@ -104,6 +108,7 @@ export function buildUserText(input: CoachRequest, mode: CoachMode, hasVideo: bo
 
   if (mode === "live") {
     lines.push("ライブ画面共有のフレームです。製品は声。戦闘後レビュー、膠着の詰め、中距離の押し／離脱だけ話す。撃ち合い中の長話はしない。");
+    lines.push("武器名はHUDかモデルが読めたときだけ。段差と階段を取り違えるな。Apexのノックはキルではない。");
     lines.push("調査ビーコンやreconをファイト前に使っていたら、スキャンの敵位置とアンチと残り時間を spokenLine に入れて次の一手を言え。");
     lines.push(
       language === "en"
@@ -166,7 +171,7 @@ export function buildUserText(input: CoachRequest, mode: CoachMode, hasVideo: bo
       `試合VODの区間 ${formatTimestamp(start)}–${formatTimestamp(end)} です。timestamp はこの試合時刻で書いてください。撃ち合いがなければ insights は空配列。rotation は空にしない。`,
     );
     lines.push("この区間の回転の正誤は断定せず、リング・経路・漁夫タイミングの事実を rotation に残す。試合全体の判定は後段のマージが行う。");
-    lines.push("近距離スクラップがあれば closeRangeFights に斜線と戦闘ノウハウを厚く書く。insights は高信号だけ。");
+    lines.push("近距離スクラップがあれば closeRangeFights に斜線・段差・ピーク・確殺判断を厚く書く。insights は見えていた情報と期待値のカード。武器名は読めたときだけ。");
     if (typeof input.chunkIndex === "number" && typeof input.chunkCount === "number") {
       lines.push(`区間 ${input.chunkIndex + 1}/${input.chunkCount}`);
     }
@@ -178,7 +183,7 @@ export function buildUserText(input: CoachRequest, mode: CoachMode, hasVideo: bo
 
   lines.push(
     hasVideo
-      ? "クリップ動画を添付しています。動画ファイルそのものを見てコーチングしてください。近距離があれば closeRangeFights に斜線とインファイトを厚く。"
+      ? "クリップ動画を添付しています。動画ファイルそのものを見てコーチングしてください。近距離があれば closeRangeFights に斜線・段差・インファイト・確殺を厚く。読めない武器名は書くな。"
       : "動画なし。ノートコーチングです。悩み文を、そのランクとそのキャラの判断として具体化してください。closeRangeFights は空。",
   );
   if (input.videoUrl && hasVideo) {
