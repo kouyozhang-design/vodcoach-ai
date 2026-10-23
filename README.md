@@ -6,8 +6,8 @@ Clips are uploaded **directly to Vercel Blob** from the browser so they never pa
 
 ## Coaching modes
 
-- **Short clip (about 90 seconds or less):** one Gemini video call (`gemini-3.8-flash`) on the Blob URL.
-- **Full match (longer VODs):** the client splits the timeline into ~40 second windows so each Hobby function stays under ~60 seconds, then runs up to 3 Gemini calls in parallel on the same Blob URL plus time offsets. Each `/api/coach` call has a ~52s client timeout (under Hobby 60s) and leftover requests abort on error or unmount. The UI shows `解析中 N / total`. A long match is not aborted at 5 minutes while N is still increasing; the client errors only if no chunk or merge step completes for ~80 seconds. JPEG stills are only extracted if that Blob URL path fails. Results merge into one match report with more timestamped scenes — not only aim / positioning / abilities / practice.
+- **Short clip (about 90 seconds or less):** one Gemini video call (`gemini-3.8-flash`) on the Blob URL. One card per real improvement — not locked to four ids. Short clips can have few cards.
+- **Full match (longer VODs):** the client splits the timeline into ~40 second windows so each Hobby function stays under ~60 seconds, then runs up to 3 Gemini calls in parallel on the same Blob URL plus time offsets. Each `/api/coach` call has a ~52s client timeout (under Hobby 60s) and leftover requests abort on error or unmount. The UI shows `解析中 N / total`. A long match is not aborted at 5 minutes while N is still increasing; the client errors only if no chunk or merge step completes for ~80 seconds. JPEG stills are only extracted if that Blob URL path fails. Chunks also pass rotation notes (ring, path, third-party timing). Merge judges zone-first vs zone-cut vs 漁夫 across the **whole match**, not per 40s window. Long lists group into type tabs (立ち回り/回転, エイム, スキル, 詰め/終盤, その他). Similar notes merge; cap only if the UI would break. Wins still get higher-EV 詰め when it is real.
 - **PC live:** browser `getDisplayMedia` (window or screen). The page samples the screen often (about every 2.5 seconds), but the panel updates only when the model sets `shouldSpeak` on a real cue. Otherwise it stays on 注視中 and repeats are dropped. There is no overlay on the game. Windowed or borderless is required so you can see this site. VALORANT Vanguard and similar anti-cheat may block capture (black frames or a hard failure); the UI says so.
 
 Notes, clip, match-chunk, match-merge, and live share one coaching bar: process and expected value over outcome, personalized to game / rank / character / concern plus on-screen evidence, no generic slogans. Match chunks may return zero timestamped tips.
@@ -72,6 +72,7 @@ src/
 │   ├── api/coach/route.ts       # JSON coaching endpoint (clip / match / live)
 │   └── page.tsx                 # VOD drop + PC live session
 ├── components/
+│   ├── insight-board.tsx        # type tabs for long insight lists
 │   ├── insight-card.tsx
 │   └── live-session.tsx         # Screen capture + live panel
 └── lib/
@@ -81,6 +82,8 @@ src/
     ├── upload-clip.ts           # Direct Blob upload
     └── coach/
         ├── bar.ts               # shared pro-team / EV bar
+        ├── insight-tabs.ts      # tab grouping + merge-similar
+        ├── rotation.ts          # zone-first / zone-cut / 漁夫 notes
         ├── prompts.ts           # notes/clip/chunk/merge/live prompts
         ├── live-cues.ts         # shouldSpeak + repeat dedupe
         ├── mock-provider.ts

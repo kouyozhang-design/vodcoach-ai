@@ -28,10 +28,30 @@ test("live prompt speaks only on real cues", () => {
   assert.match(prompt, /空配列/);
 });
 
-test("match-chunk prompt allows zero timestamped tips", () => {
+test("match-chunk prompt allows zero timestamped tips and always records rotation", () => {
   const prompt = systemPrompt("match-chunk");
-  assert.match(prompt, /0〜6/);
+  assert.match(prompt, /0〜8/);
   assert.match(prompt, /空配列/);
+  assert.match(prompt, /rotation/);
+  assert.match(prompt, /zone-first/);
+  assert.match(prompt, /third-party/);
+  assert.match(prompt, /漁夫/);
+});
+
+test("clip prompt is not locked to four insight ids", () => {
+  const prompt = systemPrompt("clip");
+  assert.match(prompt, /件数は固定しない/);
+  assert.doesNotMatch(prompt, /必ず4件/);
+  assert.match(prompt, /tab は rotation/);
+});
+
+test("match-merge prompt judges rotation across the whole match", () => {
+  const prompt = systemPrompt("match-merge");
+  assert.match(prompt, /試合全体で判定/);
+  assert.match(prompt, /rotationStory/);
+  assert.match(prompt, /詰め/);
+  assert.match(prompt, /36/);
+  assert.doesNotMatch(prompt, /8件に満たなくても/);
 });
 
 test("profile and user text wire game rank character concern on every mode", () => {
@@ -53,7 +73,19 @@ test("profile and user text wire game rank character concern on every mode", () 
         endOffsetSec: 80,
         chunkReports:
           mode === "match-merge"
-            ? [{ startOffsetSec: 40, endOffsetSec: 80, insights: [] }]
+            ? [
+                {
+                  startOffsetSec: 40,
+                  endOffsetSec: 80,
+                  insights: [],
+                  rotation: {
+                    intent: "zone-cut",
+                    ring: "第2リング残り35秒",
+                    path: "尾根を横断",
+                    note: "銃声は西",
+                  },
+                },
+              ]
             : undefined,
       },
       mode,
@@ -65,6 +97,14 @@ test("profile and user text wire game rank character concern on every mode", () 
     assert.match(text, /キャラクター: Jett/, mode);
     assert.match(text, /サイト進入で2アングル/, mode);
     assert.match(text, /過程と期待値/, mode);
+    if (mode === "match-merge") {
+      assert.match(text, /ゾーンカット/);
+      assert.match(text, /尾根を横断/);
+      assert.match(text, /試合全体で/);
+    }
+    if (mode === "match-chunk") {
+      assert.match(text, /rotation は空にしない/);
+    }
   }
 });
 

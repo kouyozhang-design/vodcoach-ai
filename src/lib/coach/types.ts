@@ -1,13 +1,29 @@
 import type { GameId } from "@/lib/games";
 
+/** Legacy clip ids. New reports use free ids plus `tab`. */
 export const CLIP_INSIGHT_IDS = ["aim", "positioning", "abilities", "practice"] as const;
 export type ClipInsightId = (typeof CLIP_INSIGHT_IDS)[number];
+
+export const INSIGHT_TAB_IDS = ["rotation", "aim", "abilities", "endgame", "other"] as const;
+export type InsightTabId = (typeof INSIGHT_TAB_IDS)[number];
+
+export const ROTATION_INTENTS = ["zone-first", "zone-cut", "third-party", "unknown"] as const;
+export type RotationIntent = (typeof ROTATION_INTENTS)[number];
 
 export type CoachMode = "clip" | "match-chunk" | "match-merge" | "live";
 export type CoachReportKind = "clip" | "match" | "live" | "notes";
 
+export type RotationNote = {
+  intent?: RotationIntent;
+  ring?: string;
+  path?: string;
+  thirdPartyTiming?: string;
+  note?: string;
+};
+
 export type CoachInsight = {
   id: string;
+  tab?: InsightTabId;
   timestamp?: string;
   title: string;
   finding: string;
@@ -42,6 +58,7 @@ export type CoachChunkReport = {
   headline?: string;
   summary?: string;
   insights?: CoachInsight[];
+  rotation?: RotationNote;
   startOffsetSec?: number;
   endOffsetSec?: number;
 };
@@ -59,6 +76,8 @@ export type CoachResponse = {
   truncated?: boolean;
   shouldSpeak?: boolean;
   skipReason?: string;
+  rotation?: RotationNote;
+  rotationStory?: string;
 };
 
 export interface VideoCoachProvider {

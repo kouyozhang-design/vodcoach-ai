@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
+import { parseInsightTab } from "@/lib/coach/insight-tabs";
 import { getCoachProvider } from "@/lib/coach/provider";
+import { parseRotation } from "@/lib/coach/rotation";
 import type {
   CoachChunkReport,
   CoachFrame,
+  CoachInsight,
   CoachMode,
   CoachRequest,
 } from "@/lib/coach/types";
@@ -200,12 +203,14 @@ function parseChunkReports(value: unknown): CoachChunkReport[] | undefined | Nex
     }
     const row = entry as Record<string, unknown>;
     const insights = Array.isArray(row.insights)
-      ? row.insights.flatMap((item) => {
+      ? row.insights.flatMap((item): CoachInsight[] => {
           if (!item || typeof item !== "object") return [];
           const insight = item as Record<string, unknown>;
+          const tab = parseInsightTab(insight.tab) ?? parseInsightTab(insight.id);
           return [
             {
               id: stringifyField(insight.id) || "scene",
+              tab,
               timestamp: stringifyField(insight.timestamp) || undefined,
               title: stringifyField(insight.title),
               finding: stringifyField(insight.finding),
@@ -218,6 +223,7 @@ function parseChunkReports(value: unknown): CoachChunkReport[] | undefined | Nex
       headline: stringifyField(row.headline) || undefined,
       summary: stringifyField(row.summary) || undefined,
       insights,
+      rotation: parseRotation(row.rotation),
       startOffsetSec: parseNumber(row.startOffsetSec),
       endOffsetSec: parseNumber(row.endOffsetSec),
     });

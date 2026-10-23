@@ -7,7 +7,7 @@ import {
   AlertCircle, Check, ChevronDown, FileVideo, Gamepad2, LoaderCircle,
   Monitor, Play, ScanLine, Shield, Sparkles, UploadCloud, X,
 } from "lucide-react";
-import { InsightCard } from "@/components/insight-card";
+import { InsightBoard } from "@/components/insight-board";
 import { LiveSession } from "@/components/live-session";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -323,6 +323,7 @@ export default function Home() {
           headline: payload.headline,
           summary: payload.summary,
           insights: payload.insights,
+          rotation: payload.rotation,
           startOffsetSec: chunk.startSec,
           endOffsetSec: chunk.endSec,
         } satisfies CoachChunkReport;
@@ -477,7 +478,7 @@ export default function Home() {
             試合一本も、プレイ中も、<span className="inline-block bg-gradient-to-r from-red-300 via-red-500 to-orange-400 bg-clip-text text-transparent">映像から改善。</span>
           </h1>
           <p className="mt-4 max-w-2xl text-sm leading-6 text-zinc-500">
-            Apex LegendsとVALORANT。短いクリップ・試合一本・ライブは同じ基準です。見えていた情報と期待値で判断し、本当に指摘すべき局面だけ残します。PCでは画面共有でライブ指摘も出せます。
+            Apex LegendsとVALORANT。短いクリップ・試合一本・ライブは同じ基準です。見えていた情報と期待値で判断し、改善点の数だけカードを出します。長い試合は種類タブと試合全体の回転で読みます。PCでは画面共有でライブ指摘も出せます。
           </p>
           <div className="mt-6 inline-flex rounded-full border border-white/[0.08] bg-white/[0.03] p-1">
             <button
@@ -600,9 +601,9 @@ export default function Home() {
               <div className="flex min-h-[520px] flex-col items-center justify-center px-6 py-10 text-center sm:min-h-[620px] sm:px-8">
                 <div className="relative"><div className="absolute -inset-7 rounded-full bg-red-500/10 blur-2xl" /><div className="relative grid size-16 place-items-center rounded-2xl border border-white/[0.08] bg-white/[0.03]"><Play className="ml-1 size-6 fill-red-500/20 text-red-400" /></div></div>
                 <p className="mt-6 text-base font-semibold">{file ? "解析の準備ができました" : "動画だけでもコーチングできます"}</p>
-                <p className="mt-2 max-w-sm text-xs leading-5 text-zinc-600">{file ? "90秒以下はそのまま。それより長い試合は分割して、タイムスタンプ付きの指摘を1つのレポートにまとめます。" : "クリップまたは試合一本をドロップするか、立ち回り・目的を書いて解析を開始できます。"}</p>
-                <div className="mt-7 grid w-full max-w-md grid-cols-2 gap-2 text-left sm:grid-cols-4">
-                  {["Aim", "Sightlines", "Abilities", "Scenes"].map((item, index) => <div key={item} className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5"><span className="text-[9px] text-red-400">0{index + 1}</span><p className="mt-1 text-[10px] text-zinc-500">{item}</p></div>)}
+                <p className="mt-2 max-w-sm text-xs leading-5 text-zinc-600">{file ? "90秒以下はそのまま。それより長い試合は分割して、タイムスタンプ付きの指摘を種類ごとにまとめ、回転は試合全体で判定します。" : "クリップまたは試合一本をドロップするか、立ち回り・目的を書いて解析を開始できます。"}</p>
+                <div className="mt-7 grid w-full max-w-md grid-cols-2 gap-2 text-left sm:grid-cols-3 lg:grid-cols-5">
+                  {["立ち回り/回転", "エイム", "スキル", "詰め/終盤", "その他"].map((item, index) => <div key={item} className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5"><span className="text-[9px] text-red-400">0{index + 1}</span><p className="mt-1 text-[10px] text-zinc-500">{item}</p></div>)}
                 </div>
               </div>
             )}
@@ -637,16 +638,22 @@ export default function Home() {
                 </div>
                 <div className="p-5 sm:p-6">
                   <p className="text-sm leading-6 text-zinc-300">{result.summary}</p>
+                  {result.rotationStory ? (
+                    <div className="mt-5 rounded-2xl border border-white/[0.07] bg-white/[0.022] p-4">
+                      <p className="text-[9px] font-semibold uppercase tracking-wider text-red-400">試合全体の回転</p>
+                      <p className="mt-2 text-sm leading-6 text-zinc-300">{result.rotationStory}</p>
+                    </div>
+                  ) : null}
                   {result.insights.length === 0 ? (
                     <p className="mt-6 text-sm leading-6 text-zinc-500">
                       この解析から、今の悩みに対して指摘すべき局面はありませんでした。勝敗やキルだけの区間は残していません。
                     </p>
                   ) : (
-                    <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                      {result.insights.map((insight, index) => (
-                        <InsightCard key={`${insight.id}-${index}`} insight={insight} index={index} instant={insightInstant} />
-                      ))}
-                    </div>
+                    <InsightBoard
+                      key={result.analysisId}
+                      insights={result.insights}
+                      instant={insightInstant}
+                    />
                   )}
                 </div>
               </div>

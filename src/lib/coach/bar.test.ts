@@ -7,6 +7,10 @@ test("coaching bar forbids outcome-only and slogan coaching", () => {
   assert.match(COACHING_BAR, /結果だけで褒めたり責めたりしない/);
   assert.match(COACHING_BAR, /ゲーム／ランク／キャラ／悩み/);
   assert.match(COACHING_BAR, /本当に指摘すべき局面だけ/);
+  assert.match(COACHING_BAR, /ゾーンファースト/);
+  assert.match(COACHING_BAR, /漁夫/);
+  assert.match(COACHING_BAR, /詰め/);
+  assert.match(COACHING_BAR, /件数は固定しない/);
 });
 
 test("looksLikeSlogan catches generic FPS filler", () => {

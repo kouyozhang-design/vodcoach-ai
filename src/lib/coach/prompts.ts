@@ -1,5 +1,6 @@
 import { formatTimestamp } from "../match-plan.ts";
 import { COACHING_BAR } from "./bar.ts";
+import { formatRotationLine } from "./rotation.ts";
 import { requestHasClip, type CoachMode, type CoachRequest } from "./types.ts";
 
 export function playerContext(input: Pick<CoachRequest, "game" | "rank" | "character" | "concern">) {
@@ -28,38 +29,55 @@ export function systemPrompt(mode: CoachMode) {
 今見えているゲーム画面（共有フレーム）だけを根拠に、直後の1手を評価します。
 shouldSpeak は、今この瞬間に反証可能な指摘があるときだけ true。メニュー・黒画面・移動のみ・前回と同じ局面・勝敗だけの変化なら false。
 false のときは insights を空配列にし、skipReason に短い理由を書く。true のときは insights 1〜2件。枠を埋めない。
-id は自由（fight, peek, util, rotate など）。timestamp は "now" か経過 mm:ss。
+id は自由（fight, peek, util, rotate など）。tab は rotation | aim | abilities | endgame | other。timestamp は "now" か経過 mm:ss。
 ゲーム内HUDへ重ねる前提の指示は書かない。recentCues と同じ内容は繰り返さない。
 JSON形状:
-{"shouldSpeak":boolean,"skipReason":string,"headline":string,"summary":string,"insights":[{"id":string,"timestamp":string,"title":string,"finding":string,"action":string}]}`;
+{"shouldSpeak":boolean,"skipReason":string,"headline":string,"summary":string,"insights":[{"id":string,"tab":"rotation"|"aim"|"abilities"|"endgame"|"other","timestamp":string,"title":string,"finding":string,"action":string}]}`;
   }
   if (mode === "match-chunk") {
     return `${COACHING_BAR}
 あなたはFPSの試合VODコーチです。日本語で指定JSONだけを返します。
-渡された時間帯だけを見る。本当に期待値を落としている局面だけを 0〜6 件出す。回転・移動・デスカムだけの区間は insights を空配列のままにする。0件でよい。
-aim / positioning / abilities / practice の4枠に縛らない。枠を埋めるための指摘は禁止。
+渡された時間帯だけを見る。insights は本当に期待値を落としている局面だけ。局面がなければ空配列。0件でよい。件数は固定しない（目安 0〜8）。枠を埋めない。
+id は自由。tab は rotation | aim | abilities | endgame | other。aim / positioning / abilities / practice の4枠に縛らない。
+撃ち合いが無くても、勝っていても、より高い期待値の詰めがあれば tab=endgame で出す。類似は1件にまとめる。
+回転の正誤はこの40秒だけでは断定しない。事実を rotation に残し、試合全体の判定はマージに任せる。
+rotation は insights が空でも必ず埋める。デスカムや移動だけの区間でも、リング／経路／漁夫のタイミングが分かれば書く。分からなければ intent=unknown と短い note。
+- intent: zone-first（先にゾーンまたはスペースを取る） / zone-cut（通路を切って移動） / third-party（漁夫。他隊の撃ち合い後に入る） / unknown
+- ring: Apexはリング番号・残り時間・チーム位置。VALORANTはサイトと回転先。
+- path: スクワッドの経路
+- thirdPartyTiming: 第三者が入った／入れたタイミング。無ければ空文字
+- note: 見えていたリング・人数・銃声の事実。この区間の勝敗で褒めたり責めたりしない
 timestamp は試合全体の mm:ss（チャンク先頭からの相対ではなく絶対時間）。
 JPEGは補助。動画セグメントがあるときは動画を優先。
 JSON形状:
-{"headline":string,"summary":string,"insights":[{"id":string,"timestamp":string,"title":string,"finding":string,"action":string}]}`;
+{"headline":string,"summary":string,"rotation":{"intent":"zone-first"|"zone-cut"|"third-party"|"unknown","ring":string,"path":string,"thirdPartyTiming":string,"note":string},"insights":[{"id":string,"tab":"rotation"|"aim"|"abilities"|"endgame"|"other","timestamp":string,"title":string,"finding":string,"action":string}]}`;
   }
   if (mode === "match-merge") {
     return `${COACHING_BAR}
 あなたはFPSの試合レポート編集者です。日本語で指定JSONだけを返します。
-区間レポートを1本の試合レポートにまとめる。重複とスローガンと結果論だけを削り、タイムスタンプ付きの具体的な局面だけを残す。0件でもよい。8件に満たなくても埋めない。
-4枠（aim/positioning/abilities/practice）に圧縮しない。timestamp は mm:ss のまま。
+区間レポートを1本の試合レポートにまとめる。重複とスローガンと結果論だけを削り、タイムスタンプ付きの具体的な局面だけを残す。0件でもよい。枠を埋めない。
+回転は試合全体で判定する。各40秒の正誤をそのまま並べない。
+全区間の rotation（ring, path, thirdPartyTiming, intent, note）を時系列で読み、スクワッドがゾーンファースト／ゾーンカット／漁夫のどれをいつ選び、それは試合全体のリングと人数と銃声から正しかったかを1つの物語にする。
+rotationStory に試合全体の回転評価を書く（具体的な時刻と経路）。回転の改善点は tab=rotation の insight にする。正しければ回転カードを無理に作らない。
+insights は 1カード = 1つの実在する改善。4枠（aim/positioning/abilities/practice）に圧縮しない。類似はマージ。
+勝っていても、より高い期待値の詰め／クローズがあれば tab=endgame で出す。キルや勝利を理由に省略しない。
+件数の上限はUI破綻防止のみ（おおよそ36）。埋め草で増やさない。質を優先。
+timestamp は mm:ss のまま。tab は rotation | aim | abilities | endgame | other。
 JSON形状:
-{"headline":string,"summary":string,"insights":[{"id":string,"timestamp":string,"title":string,"finding":string,"action":string}]}`;
+{"headline":string,"summary":string,"rotationStory":string,"insights":[{"id":string,"tab":"rotation"|"aim"|"abilities"|"endgame"|"other","timestamp":string,"title":string,"finding":string,"action":string}]}`;
   }
   return `${COACHING_BAR}
 あなたはFPSの動画／ノートコーチです。日本語で、指定JSONだけを返します。
-insights は必ず4件で id は aim, positioning, abilities, practice の順。
+insights は本当に改善すべき点だけ。件数は固定しない。短いクリップは1〜3件でよい。長いクリップでも枠を埋めない。
+id は自由。tab は rotation | aim | abilities | endgame | other。4枠（aim/positioning/abilities/practice）に圧縮しない。
+練習メニューは実在する改善に紐づくときだけ tab=other に出す。スローガンのサーキットで埋めない。
 各 insight は、その選手のゲーム／ランク／キャラ／悩みと、映像または状況の根拠を結び、過程と期待値で書く。
+勝っても、より高い期待値の詰め／クローズがあれば tab=endgame で出す。
 勝敗やキルデスだけで褒めたり責めたりしない。汎用スローガンは禁止。
 クリップ動画があるときは映像の時間帯に触れる。JPEGではなく渡された動画そのものを見る。
 ノートのみのときは、悩み文をその選手の試合で起きる判断ミスとして具体化する。
 JSON形状:
-{"headline":string,"summary":string,"insights":[{"id":"aim"|"positioning"|"abilities"|"practice","timestamp":string,"title":string,"finding":string,"action":string}]}`;
+{"headline":string,"summary":string,"insights":[{"id":string,"tab":"rotation"|"aim"|"abilities"|"endgame"|"other","timestamp":string,"title":string,"finding":string,"action":string}]}`;
 }
 
 export function buildUserText(input: CoachRequest, mode: CoachMode, hasVideo: boolean, hasFrames: boolean) {
@@ -79,7 +97,9 @@ export function buildUserText(input: CoachRequest, mode: CoachMode, hasVideo: bo
 
   if (mode === "match-merge") {
     const reports = input.chunkReports ?? [];
-    lines.push("以下は試合を時間分割して解析した区間レポートです。1本の試合レポートに統合してください。空の区間は空のまま扱い、埋めない。");
+    lines.push("以下は試合を時間分割して解析した区間レポートです。1本の試合レポートに統合してください。空の区間の撃ち合いは空のまま扱い、埋めない。");
+    lines.push("回転は全区間の rotation を時系列で読み、試合全体でゾーンファースト／ゾーンカット／漁夫の正誤を判定する。40秒ごとの感想を並べない。");
+    lines.push("勝っていても、より高い期待値の詰めがあれば残す。類似はマージ。");
     if (input.durationSec) lines.push(`試合の長さ: ${formatTimestamp(input.durationSec)}`);
     reports.forEach((report, index) => {
       const start = report.startOffsetSec ?? 0;
@@ -87,14 +107,18 @@ export function buildUserText(input: CoachRequest, mode: CoachMode, hasVideo: bo
       lines.push(`--- 区間 ${index + 1} ${formatTimestamp(start)}–${formatTimestamp(end)} ---`);
       if (report.headline) lines.push(`見出し: ${report.headline}`);
       if (report.summary) lines.push(`要約: ${report.summary}`);
+      const rotationLine = formatRotationLine(report.rotation);
+      if (rotationLine) lines.push(rotationLine);
+      else lines.push("回転: （この区間の回転メモなし）");
       const insights = report.insights ?? [];
       if (insights.length === 0) {
-        lines.push("- （この区間に指摘すべき局面なし）");
+        lines.push("- （この区間に撃ち合いの指摘なし。回転メモは上を使う）");
         return;
       }
       for (const insight of insights) {
+        const tab = insight.tab ? ` tab=${insight.tab}` : "";
         lines.push(
-          `- [${insight.timestamp || "?"}] ${insight.title}: ${insight.finding} / 行動: ${insight.action}`,
+          `- [${insight.timestamp || "?"}]${tab} ${insight.title}: ${insight.finding} / 行動: ${insight.action}`,
         );
       }
     });
@@ -105,8 +129,9 @@ export function buildUserText(input: CoachRequest, mode: CoachMode, hasVideo: bo
     const start = input.startOffsetSec ?? 0;
     const end = input.endOffsetSec ?? start;
     lines.push(
-      `試合VODの区間 ${formatTimestamp(start)}–${formatTimestamp(end)} です。timestamp はこの試合時刻で書いてください。局面がなければ insights は空配列。`,
+      `試合VODの区間 ${formatTimestamp(start)}–${formatTimestamp(end)} です。timestamp はこの試合時刻で書いてください。撃ち合いがなければ insights は空配列。rotation は空にしない。`,
     );
+    lines.push("この区間の回転の正誤は断定せず、リング・経路・漁夫タイミングの事実を rotation に残す。試合全体の判定は後段のマージが行う。");
     if (typeof input.chunkIndex === "number" && typeof input.chunkCount === "number") {
       lines.push(`区間 ${input.chunkIndex + 1}/${input.chunkCount}`);
     }

@@ -1,5 +1,14 @@
 import { formatTimestamp, shiftTimestamp } from "../match-plan.ts";
-import type { CoachInsight, CoachRequest, CoachResponse, VideoCoachProvider } from "./types.ts";
+import { mergeSimilarInsights, withInsightTab } from "./insight-tabs.ts";
+import { isEmptyRotation, summarizeRotationTimeline } from "./rotation.ts";
+import type {
+  CoachChunkReport,
+  CoachInsight,
+  CoachRequest,
+  CoachResponse,
+  RotationNote,
+  VideoCoachProvider,
+} from "./types.ts";
 import { requestHasClip, resolveCoachMode } from "./types.ts";
 
 class MockVideoCoachProvider implements VideoCoachProvider {
@@ -38,12 +47,43 @@ function buildCoachResponse(input: CoachRequest): CoachResponse {
       : `${input.character} コーチング · ${input.rank}`,
     summary: hasVideo
       ? isApex
-        ? `${input.rank} ${input.character}のクリップから、立ち回り・撃ち合いの間合い・スキルの順番を整理しました。目的: 「${purpose}」。`
-        : `${input.rank} ${input.character}のクリップから、サイトの切り方・ヘッドライン・スキルタイミングを整理しました。目的: 「${purpose}」。`
+        ? `${input.rank} ${input.character}のクリップから、過程と期待値で見た改善だけを残しました。目的: 「${purpose}」。`
+        : `${input.rank} ${input.character}のクリップから、サイトの切り方とスキルの窓を整理しました。目的: 「${purpose}」。`
       : isApex
-        ? `${input.rank} ${input.character}向けのノートコーチングです。近接の撃ち合い、遮蔽の使い方、アビリティの順番を次の試合用に落としています。目的: 「${purpose}」。`
-        : `${input.rank} ${input.character}向けのノートコーチングです。ヘッドライン、アングルの切り方、サイトタイミングを4項目にしました。目的: 「${purpose}」。`,
+        ? `${input.rank} ${input.character}向けのノートコーチングです。近接の撃ち合いと遮蔽の使い方を、枠に縛らず具体化しています。目的: 「${purpose}」。`
+        : `${input.rank} ${input.character}向けのノートコーチングです。ヘッドラインとアングルの切り方を具体化しています。目的: 「${purpose}」。`,
     insights: buildInsights(input, hasVideo, isApex, purpose),
+  };
+}
+
+function rotationForChunk(input: CoachRequest): RotationNote {
+  const start = input.startOffsetSec ?? 0;
+  const index = input.chunkIndex ?? 0;
+  const isApex = input.game === "apex-legends";
+  if (index % 3 === 1) {
+    return {
+      intent: "zone-cut",
+      ring: isApex ? "第2リング残り35秒、チームはゾーン外の尾根" : "Bサイト側。スパイクはA",
+      path: isApex ? "Fragment西からHarvester尾根を横断" : "Aメインからミッドへカット",
+      thirdPartyTiming: "",
+      note: `${formatTimestamp(start)}、西に銃声。ゾーンカットを選んだ。この区間だけでは正誤を断定しない。`,
+    };
+  }
+  if (index % 3 === 2) {
+    return {
+      intent: "third-party",
+      ring: isApex ? "第3リング残り50秒、チームは東のカバー外" : "Aサイト外。リテイク未開始",
+      path: isApex ? "尾根から東の撃ち合いへ接近" : "ミッドからAへ回り込み",
+      thirdPartyTiming: `${formatTimestamp(start + 12)}に東の撃ち合いへ接近`,
+      note: `${formatTimestamp(start + 12)}、撃ち合い開始から約12秒で漁夫を見ている。人数とリングは後段で判定する。`,
+    };
+  }
+  return {
+    intent: "zone-first",
+    ring: isApex ? "第2リング内側、建物2つを確保" : "Aサイトを先に確保",
+    path: isApex ? "ドロップ地点からゾーン内の建物へ" : "Aショートからサイトへ",
+    thirdPartyTiming: "",
+    note: `${formatTimestamp(start)}、先にスペースを取る動き。銃声は遠い。`,
   };
 }
 
@@ -53,6 +93,7 @@ function buildMatchChunkResponse(input: CoachRequest): CoachResponse {
   const isApex = input.game === "apex-legends";
   const mid = (start + end) / 2;
   const quiet = typeof input.chunkIndex === "number" && input.chunkIndex % 3 === 1;
+  const rotation = rotationForChunk(input);
   if (quiet) {
     return {
       analysisId: crypto.randomUUID(),
@@ -60,8 +101,9 @@ function buildMatchChunkResponse(input: CoachRequest): CoachResponse {
       character: input.character,
       kind: "match",
       headline: `${input.character} 区間 ${formatTimestamp(start)}–${formatTimestamp(end)}`,
-      summary: `${input.rank}の${input.character}。この時間帯は回転または情報待ちで、指摘すべき局面はありません。`,
+      summary: `${input.rank}の${input.character}。この時間帯は回転または情報待ちで、撃ち合いの指摘はありません。回転メモだけ残します。`,
       insights: [],
+      rotation,
       durationSec: input.durationSec,
       chunk: {
         startOffsetSec: start,
@@ -75,6 +117,7 @@ function buildMatchChunkResponse(input: CoachRequest): CoachResponse {
   const insights: CoachInsight[] = [
     {
       id: "fight-open",
+      tab: "aim",
       timestamp: shiftTimestamp(formatTimestamp(start + 4), start, end),
       title: isApex ? "遮蔽を離れて最初の射線を2本開いている" : "チョーク前にクロスヘアがヘッドから落ちる",
       finding: isApex
@@ -86,6 +129,7 @@ function buildMatchChunkResponse(input: CoachRequest): CoachResponse {
     },
     {
       id: "trade",
+      tab: "rotation",
       timestamp: shiftTimestamp(formatTimestamp(mid), start, end),
       title: isApex ? "トレード距離が味方から切れている" : "エントリーが孤立してサイトの2アングルを同時に開く",
       finding: `${formatTimestamp(mid)}、${input.rank}帯では味方が撃てない位置まで単独で伸びています。`,
@@ -95,6 +139,7 @@ function buildMatchChunkResponse(input: CoachRequest): CoachResponse {
     },
     {
       id: "util",
+      tab: "abilities",
       timestamp: shiftTimestamp(formatTimestamp(Math.max(start, end - 8)), start, end),
       title: isApex ? "タクティカルが撃ち合いの後になっている" : "スキルがサイトテイクの窓に間に合っていない",
       finding: `${input.character}のスキルがこの区間の終盤まで残っています。先に置いた側が勝ちます。`,
@@ -103,11 +148,16 @@ function buildMatchChunkResponse(input: CoachRequest): CoachResponse {
         : "突入コールの3秒前にシグネチャー。プラント確保の窓でアルティメットを使う。",
     },
     {
-      id: "reset",
+      id: "close",
+      tab: "endgame",
       timestamp: shiftTimestamp(formatTimestamp(end - 2), start, end),
-      title: "リセットせず次のピークに入っている",
-      finding: "ダウン後の情報を待たず、同じ角度をもう一度開いています。",
-      action: "一度引き、足音と能力の有無を数えてから別の角度で出直す。",
+      title: isApex ? "ダウンを取ったあとの詰めが甘い" : "サイトを取ったあとのクローズが遅い",
+      finding: isApex
+        ? `${formatTimestamp(end - 2)}、${input.rank}の${input.character}は撃ち合いに勝ったあとも同じ角度に残っている。リセットせず詰め切らないので、第三者に期待値を渡している。`
+        : `${formatTimestamp(end - 2)}、${input.rank}の${input.character}はキル後も同じアングルに残り、サイトの裏を閉じていない。勝ったことではなく、閉じる順番が遅い。`,
+      action: isApex
+        ? "ダウン確認の1秒後にスライドで角度を変え、残りの1人をカバー側へ追い込む。勝利クリップでも詰めの期待値を見る。"
+        : "キル後は2歩サイト内へ入り、heavenを消してからプラント。勝ったラウンドでもクローズの順番を直す。",
     },
   ];
 
@@ -117,8 +167,9 @@ function buildMatchChunkResponse(input: CoachRequest): CoachResponse {
     character: input.character,
     kind: "match",
     headline: `${input.character} 区間 ${formatTimestamp(start)}–${formatTimestamp(end)}`,
-    summary: `${input.rank}の${input.character}。この時間帯から、見えていた情報で期待値を落とした局面だけを残しました。`,
+    summary: `${input.rank}の${input.character}。この時間帯から、見えていた情報で期待値を落とした局面だけを残しました。勝っていても詰めを見ています。`,
     insights,
+    rotation,
     durationSec: input.durationSec,
     chunk: {
       startOffsetSec: start,
@@ -131,17 +182,14 @@ function buildMatchChunkResponse(input: CoachRequest): CoachResponse {
 
 function buildMergeResponse(input: CoachRequest): CoachResponse {
   const reports = input.chunkReports ?? [];
-  const insights: CoachInsight[] = [];
-  for (const report of reports) {
-    for (const insight of report.insights ?? []) {
-      insights.push({
-        ...insight,
-        id: insight.id || `scene-${insights.length + 1}`,
-      });
-      if (insights.length >= 16) break;
-    }
-    if (insights.length >= 16) break;
-  }
+  const collected = reports.flatMap((report) => (report.insights ?? []).map(withInsightTab));
+  const rotationInsight = matchRotationInsight(input, reports);
+  const withClose = ensureHigherEvClose(input, collected);
+  const insights = mergeSimilarInsights(
+    rotationInsight ? [rotationInsight, ...withClose] : withClose,
+  );
+  const rotationStory = matchRotationStory(input, reports);
+
   return {
     analysisId: crypto.randomUUID(),
     game: input.game,
@@ -149,14 +197,82 @@ function buildMergeResponse(input: CoachRequest): CoachResponse {
     kind: "match",
     headline: `${input.character} 試合一本診断 · ${input.rank}`,
     summary:
-      insights.length === 0
+      insights.length === 0 && !rotationStory
         ? `${input.rank}の${input.character}。分割した区間に指摘すべき局面はありませんでした。枠は埋めていません。`
-        : `${input.rank}の${input.character}について、過程と期待値で見たタイムスタンプ付きの指摘だけを1つのレポートにまとめました。${
+        : `${input.rank}の${input.character}について、過程と期待値で見たタイムスタンプ付きの指摘だけを1つのレポートにまとめました。回転は試合全体で判定しています。${
             input.durationSec ? `対象の長さは約 ${formatTimestamp(input.durationSec)} です。` : ""
           }`,
     insights,
+    rotationStory: rotationStory || undefined,
     durationSec: input.durationSec,
   };
+}
+
+function matchRotationStory(input: CoachRequest, reports: CoachChunkReport[]) {
+  const timeline = summarizeRotationTimeline(reports);
+  if (!timeline) return "";
+  const who = `${input.rank}の${input.character}`;
+  const filled = reports.filter((report) => !isEmptyRotation(report.rotation));
+  const cut = filled.find((report) => report.rotation?.intent === "zone-cut");
+  const third = filled.find((report) => report.rotation?.intent === "third-party");
+  const first = filled.find((report) => report.rotation?.intent === "zone-first");
+  const path = filled
+    .map((report) => report.rotation?.path)
+    .filter(Boolean)
+    .join(" → ");
+
+  if (first && cut) {
+    const when = formatTimestamp(cut.startOffsetSec ?? 0);
+    return `${who}は序盤ゾーンファーストでスペースを取ったあと、${when}付近でゾーンカットに切り替えた。試合全体のリングと銃声から見ると、先にゾーン内のカバーを確保してから漁夫を見る方が期待値が高い。経路: ${path}。`;
+  }
+  if (third) {
+    const when = third.rotation?.thirdPartyTiming || formatTimestamp(third.startOffsetSec ?? 0);
+    return `${who}は${when}で漁夫に寄っている。試合全体では、ゾーンを先に踏んでから第三者を見る方が、人数と残り時間に対して高い。経路: ${path}。`;
+  }
+  return `${who}の回転は試合全体でゾーンファーストに近い。経路: ${path}。無理に直す点はない。`;
+}
+
+function matchRotationInsight(input: CoachRequest, reports: CoachChunkReport[]): CoachInsight | undefined {
+  const story = matchRotationStory(input, reports);
+  if (!story) return undefined;
+  if (/無理に直す点はない/.test(story)) return undefined;
+  const cut = reports.find((report) => report.rotation?.intent === "zone-cut");
+  const third = reports.find((report) => report.rotation?.intent === "third-party");
+  const at = cut ?? third;
+  return {
+    id: "match-rotation",
+    tab: "rotation",
+    timestamp: formatTimestamp(at?.startOffsetSec ?? 0),
+    title: cut
+      ? "ゾーンカットが早い。先にゾーンを取ってから漁夫を見る"
+      : "漁夫がゾーン確保より先になっている",
+    finding: story,
+    action:
+      "次のリングが確定してから尾根や通路を切る。銃声が聞こえても、ゾーン外の漁夫は人数と残り時間を数えてから入る。",
+  };
+}
+
+function ensureHigherEvClose(input: CoachRequest, insights: CoachInsight[]): CoachInsight[] {
+  if (insights.some((insight) => insight.tab === "endgame")) return insights;
+  const lastFight = [...insights].reverse().find((insight) => insight.tab !== "rotation");
+  if (!lastFight) return insights;
+  const isApex = input.game === "apex-legends";
+  const timestamp = lastFight.timestamp;
+  return [
+    ...insights,
+    {
+      id: "match-close",
+      tab: "endgame",
+      timestamp,
+      title: isApex ? "勝ち切れても詰めの期待値を上げられる" : "ラウンドに勝ってもクローズの順番を上げられる",
+      finding: isApex
+        ? `${timestamp || "終盤"}、${input.rank}の${input.character}は撃ち合いに勝ったあとも同じ角度に残っている。勝利ではなく、第三者に隙を渡している。`
+        : `${timestamp || "終盤"}、${input.rank}の${input.character}はキル後も同じアングルに残り、裏を閉じていない。勝ったことではなく閉じる順番。`,
+      action: isApex
+        ? "ダウン確認の1秒後に角度を変え、残りをカバー側へ追い込む。"
+        : "キル後はサイト内へ入り、heavenを消してからプラント。",
+    },
+  ];
 }
 
 function buildLiveResponse(input: CoachRequest): CoachResponse {
@@ -203,6 +319,7 @@ function buildLiveResponse(input: CoachRequest): CoachResponse {
     insights: [
       {
         id: "now-peek",
+        tab: "aim",
         timestamp: "now",
         title: isApex ? "岩の左端へ戻して射線を1本にする" : "壁へ戻して1アングルだけ切る",
         finding: isApex
@@ -226,7 +343,8 @@ function buildInsights(
   if (hasVideo) {
     return [
       {
-        id: "aim",
+        id: "crosshair-drop",
+        tab: "aim",
         timestamp: "00:12",
         title: isApex ? "撃ちの間合いが先に崩れる" : "最初のバースト前にクロスヘアが落ちる",
         finding: isApex
@@ -237,7 +355,8 @@ function buildInsights(
           : "壁のヘッドラインを目でなぞってからストレイフし、完全に止まって2発だけ撃つ。",
       },
       {
-        id: "positioning",
+        id: "two-angles",
+        tab: "rotation",
         timestamp: "00:18",
         title: isApex ? "立ち回りで射線を2本同時に開いている" : "スイングで2アングルを同時に開いている",
         finding: isApex
@@ -248,7 +367,8 @@ function buildInsights(
           : "手前の壁でheavenを隠し、味方とバックサイトを掃いてから縦を開き直す。",
       },
       {
-        id: "abilities",
+        id: "util-window",
+        tab: "abilities",
         timestamp: "00:24",
         title: isApex ? "スキルが立ち回りに乗っていない" : "スキルがエントリーのプレイスタイルに遅れる",
         finding: isApex
@@ -258,20 +378,13 @@ function buildInsights(
           ? "オープンを渡る前にタクティカル。チームがコミットする3秒前にアルティメットを宣言する。"
           : "突入3秒前にスキルをコールし、イニシエーターと重ね、プラント確保のためにアルティメットを使う。",
       },
-      {
-        id: "practice",
-        title: "目的に合わせた18分サーキット",
-        finding: `クリップ診断の練習メニュー。目的: 「${purpose}」`,
-        action: isApex
-          ? "6分 ストレイフ腰撃ち · 6分 遮蔽ピークは1ターゲット（立ち回り） · 6分 タクティカル→アルティメットを声に出してつなぐ。"
-          : "6分 ヘッドハイト移動 · 6分 止まってバースト · 6分 スキルからエントリーまでを一声で合わせる。",
-      },
     ];
   }
 
   return [
     {
-      id: "aim",
+      id: "crosshair-drop",
+      tab: "aim",
       title: isApex ? `${input.rank}帯でクロスヘアが落ちる` : `${input.rank}帯でヘッドラインを外す`,
       finding: isApex
         ? `${input.character}の近接では、スライドやストレイフ中にレティクルが足元へ落ちやすいです。目的「${purpose}」は、最初の弾の前の修正時間として現れます。`
@@ -281,7 +394,8 @@ function buildInsights(
         : "壁のヘッドラインを目でなぞってからストレイフし、完全に止まって2発だけ撃つ。",
     },
     {
-      id: "positioning",
+      id: "two-angles",
+      tab: "rotation",
       title: isApex ? "立ち回りで遮蔽を離れて2本の射線を晒す" : "立ち回りで2アングルを同時に開く",
       finding: isApex
         ? `${input.rank}の近接では、岩やドアから離れすぎると敵2人に同時に撃たれます。${input.character}でも、味方は片方しかトレードできません。`
@@ -291,7 +405,8 @@ function buildInsights(
         : "手前の壁でheavenを隠し、味方とバックサイトを掃いてから縦アングルを開き直す。",
     },
     {
-      id: "abilities",
+      id: "util-window",
+      tab: "abilities",
       title: isApex ? "プレイスタイルより先にスキルが終わる" : "プレイスタイルよりスキルが遅い",
       finding: isApex
         ? `${input.character}のタクティカルをアーマーが割れてから使うと、アルティメットも交戦を形作れません。${input.rank}では先にスキルを置いた側が勝ちます。`
@@ -299,14 +414,6 @@ function buildInsights(
       action: isApex
         ? "オープンを渡る前にタクティカルを使い、チームがコミットする3秒前にアルティメットを宣言する。"
         : "突入3秒前にスキルをコールし、イニシエーターと重ね、プラント確保のためにアルティメットを使う。",
-    },
-    {
-      id: "practice",
-      title: "目的に合わせた18分サーキット",
-      finding: `ノートプラン。目的: 「${purpose}」`,
-      action: isApex
-        ? "6分 ストレイフ腰撃ち · 6分 遮蔽ピークは1ターゲット · 6分 タクティカル→アルティメットを声に出してつなぐ。"
-        : "6分 ヘッドハイト移動 · 6分 止まってバースト · 6分 スキルからエントリーまでを一声で合わせる。",
     },
   ];
 }

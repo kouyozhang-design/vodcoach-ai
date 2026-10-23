@@ -1,13 +1,14 @@
 import { isPrivateBlobUrl } from "@/lib/blob";
 import { readableVideoUrl, readPrivateVideoBytes, sniffPrivateVideo } from "@/lib/blob-read";
-import { formatTimestamp, shiftTimestamp } from "@/lib/match-plan";
+import { formatTimestamp } from "@/lib/match-plan";
 import { mimeFromFileName } from "@/lib/video";
-import { looksLikeSlogan } from "./bar";
+import { insightsFromParsed } from "./insight-tabs";
 import { buildUserText, systemPrompt } from "./prompts";
+import { parseRotation } from "./rotation";
 import {
-  CLIP_INSIGHT_IDS,
+  INSIGHT_TAB_IDS,
+  ROTATION_INTENTS,
   resolveCoachMode,
-  type CoachInsight,
   type CoachMode,
   type CoachRequest,
   type CoachResponse,
@@ -333,22 +334,14 @@ function sleep(ms: number) {
 
 
 function schemaFor(mode: CoachMode) {
-  const insightProperties =
-    mode === "clip"
-      ? {
-          id: { type: "STRING", enum: [...CLIP_INSIGHT_IDS] },
-          timestamp: { type: "STRING" },
-          title: { type: "STRING" },
-          finding: { type: "STRING" },
-          action: { type: "STRING" },
-        }
-      : {
-          id: { type: "STRING" },
-          timestamp: { type: "STRING" },
-          title: { type: "STRING" },
-          finding: { type: "STRING" },
-          action: { type: "STRING" },
-        };
+  const insightProperties = {
+    id: { type: "STRING" },
+    tab: { type: "STRING", enum: [...INSIGHT_TAB_IDS] },
+    timestamp: { type: "STRING" },
+    title: { type: "STRING" },
+    finding: { type: "STRING" },
+    action: { type: "STRING" },
+  };
   const properties: Record<string, unknown> = {
     headline: { type: "STRING" },
     summary: { type: "STRING" },
@@ -367,6 +360,23 @@ function schemaFor(mode: CoachMode) {
     properties.skipReason = { type: "STRING" };
     required.push("shouldSpeak");
   }
+  if (mode === "match-chunk") {
+    properties.rotation = {
+      type: "OBJECT",
+      properties: {
+        intent: { type: "STRING", enum: [...ROTATION_INTENTS] },
+        ring: { type: "STRING" },
+        path: { type: "STRING" },
+        thirdPartyTiming: { type: "STRING" },
+        note: { type: "STRING" },
+      },
+    };
+    required.push("rotation");
+  }
+  if (mode === "match-merge") {
+    properties.rotationStory = { type: "STRING" };
+    required.push("rotationStory");
+  }
   return {
     type: "OBJECT",
     properties,
@@ -375,8 +385,7 @@ function schemaFor(mode: CoachMode) {
 }
 
 function toCoachResponse(parsed: Record<string, unknown>, input: CoachRequest, mode: CoachMode): CoachResponse {
-  const insights =
-    mode === "clip" ? toClipInsights(parsed, input) : toFreeInsights(parsed, input, mode);
+  const insights = insightsFromParsed(parsed, input, mode);
 
   const hasVideo = Boolean(input.videoUrl);
   const kind =
@@ -410,6 +419,8 @@ function toCoachResponse(parsed: Record<string, unknown>, input: CoachRequest, m
     response.durationSec = input.durationSec;
   }
   if (mode === "match-chunk") {
+    const rotation = parseRotation(parsed.rotation);
+    if (rotation) response.rotation = rotation;
     response.chunk = {
       startOffsetSec: input.startOffsetSec ?? 0,
       endOffsetSec: input.endOffsetSec ?? input.startOffsetSec ?? 0,
@@ -417,71 +428,15 @@ function toCoachResponse(parsed: Record<string, unknown>, input: CoachRequest, m
       count: input.chunkCount,
     };
   }
-  return response;
-}
-
-function toClipInsights(parsed: Record<string, unknown>, input: CoachRequest): CoachInsight[] {
-  const insightsRaw = Array.isArray(parsed.insights) ? parsed.insights : [];
-  const who = `${input.rank}の${input.character}`;
-  return CLIP_INSIGHT_IDS.map((id, index) => {
-    const row = (insightsRaw[index] ?? findInsight(insightsRaw, id) ?? {}) as Record<string, unknown>;
-    const finding = stringify(row.finding);
-    const action = stringify(row.action);
-    return {
-      id,
-      timestamp: stringify(row.timestamp) || undefined,
-      title: stringify(row.title) || fallbackTitle(id),
-      finding: finding || `${who}のこの項目について、今の悩みと画面の根拠から具体的な判断を切り出せませんでした。`,
-      action: action || `${who}の次の試合で、見えていた情報（人数・射程・スキル）から1つだけ高期待値の選択を繰り返す。`,
-    };
-  });
-}
-
-function toFreeInsights(parsed: Record<string, unknown>, input: CoachRequest, mode: CoachMode): CoachInsight[] {
-  const insightsRaw = Array.isArray(parsed.insights) ? parsed.insights : [];
-  const start = input.startOffsetSec ?? 0;
-  const end = input.endOffsetSec ?? start;
-  const max = mode === "live" ? 2 : mode === "match-merge" ? 16 : 6;
-  const insights: CoachInsight[] = [];
-  for (let index = 0; index < insightsRaw.length && insights.length < max; index += 1) {
-    const row = insightsRaw[index];
-    if (!row || typeof row !== "object") continue;
-    const record = row as Record<string, unknown>;
-    const title = stringify(record.title);
-    const finding = stringify(record.finding);
-    const action = stringify(record.action);
-    if (!title && !finding) continue;
-    if (looksLikeSlogan(`${title}${finding}${action}`)) continue;
-    let timestamp = stringify(record.timestamp) || undefined;
-    if (mode === "match-chunk") timestamp = shiftTimestamp(timestamp, start, end);
-    if (mode === "live" && !timestamp) timestamp = "now";
-    insights.push({
-      id: stringify(record.id) || `scene-${index + 1}`,
-      timestamp,
-      title: title || `局面 ${index + 1}`,
-      finding: finding || `${input.rank}の${input.character}について、この局面の根拠が足りません。`,
-      action: action || "見えていた人数と射程から、取る／切るを1つ選ぶ。",
-    });
+  if (mode === "match-merge") {
+    const story = stringify(parsed.rotationStory);
+    if (story) response.rotationStory = story;
   }
-  return insights;
-}
-
-function findInsight(rows: unknown[], id: string) {
-  return rows.find((row) => {
-    if (!row || typeof row !== "object") return false;
-    return stringify((row as Record<string, unknown>).id) === id;
-  });
+  return response;
 }
 
 function stringify(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
-}
-
-function fallbackTitle(id: (typeof CLIP_INSIGHT_IDS)[number]) {
-  if (id === "aim") return "エイム";
-  if (id === "positioning") return "立ち回り";
-  if (id === "abilities") return "スキル";
-  return "練習";
 }
 
 function fallbackHeadline(input: CoachRequest, kind: CoachResponse["kind"]) {
