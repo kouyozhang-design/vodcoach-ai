@@ -118,6 +118,21 @@ export function liveChrome(language: CoachLanguage) {
   };
 }
 
+export function viralChrome(language: CoachLanguage) {
+  if (language === "en") {
+    return {
+      heading: "Shorts script",
+      copy: "Copy",
+      copied: "Copied",
+    };
+  }
+  return {
+    heading: "バズる台本",
+    copy: "コピー",
+    copied: "コピーした",
+  };
+}
+
 export function shareChrome(language: CoachLanguage) {
   if (language === "en") {
     return {

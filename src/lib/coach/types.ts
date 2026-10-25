@@ -47,6 +47,13 @@ export type CloseRangeFight = {
   knowHow: string;
 };
 
+/** TikTok / Shorts lines for an Apex clip, notes plan, or merged match. Not live. */
+export type ViralScript = {
+  video_title: string;
+  ai_tsukkomi: string;
+  cta_text: string;
+};
+
 export type CoachFrame = {
   timestamp: number;
   mimeType: "image/jpeg";
@@ -110,6 +117,8 @@ export type CoachResponse = {
   rotationStory?: string;
   /** Apex only. Echoed so the next live tick can send just this POI slice. */
   mapPoi?: { map: string; poi: string };
+  /** Apex clip, notes, or merged match. Omitted when the footage does not support a callout, and for VALORANT and live. */
+  viralScript?: ViralScript;
 };
 
 export interface VideoCoachProvider {

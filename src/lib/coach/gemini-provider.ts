@@ -6,6 +6,7 @@ import { resolveCoachLanguage, type CoachLanguage } from "../coach-language";
 import { spokenLineForCue, parseNextMove, parseSpeakMoment } from "../live-speech";
 import { pickApexPoiFromParsed, serializeApexPoi } from "./apex-poi";
 import { resolveCloseRangeFights } from "./fight-detail";
+import { parseViralScript } from "./viral-script";
 import { insightsFromParsed } from "./insight-tabs";
 import { buildUserText, systemPrompt } from "./prompts";
 import { parseRotation } from "./rotation";
@@ -413,6 +414,18 @@ function schemaFor(mode: CoachMode) {
     };
     required.push("closeRangeFights");
   }
+  if (mode === "clip" || mode === "match-merge") {
+    properties.viralScript = {
+      type: "OBJECT",
+      properties: {
+        video_title: { type: "STRING" },
+        ai_tsukkomi: { type: "STRING" },
+        cta_text: { type: "STRING" },
+      },
+      required: ["video_title", "ai_tsukkomi", "cta_text"],
+    };
+    required.push("viralScript");
+  }
   return {
     type: "OBJECT",
     properties,
@@ -444,6 +457,10 @@ function toCoachResponse(parsed: Record<string, unknown>, input: CoachRequest, m
   };
   const fights = resolveCloseRangeFights(parsed, input, mode);
   if (fights.length > 0) response.closeRangeFights = fights;
+  if (mode === "clip" || mode === "match-merge") {
+    const script = parseViralScript(parsed.viralScript, input.game, resolveCoachLanguage(input));
+    if (script) response.viralScript = script;
+  }
   const mapPoi = serializeApexPoi(pickApexPoiFromParsed(parsed, input));
   if (mapPoi) response.mapPoi = mapPoi;
   if (mode === "live") {

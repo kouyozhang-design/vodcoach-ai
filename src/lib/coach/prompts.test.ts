@@ -57,17 +57,28 @@ test("clip prompt is not locked to four insight ids", () => {
   assert.match(prompt, /段差/);
   assert.match(prompt, /確殺/);
   assert.match(prompt, /解説ができた/);
+  assert.match(prompt, /video_title/);
+  assert.match(prompt, /ai_tsukkomi/);
+  assert.match(prompt, /cta_text/);
+  assert.match(prompt, /100文字/);
+  assert.match(prompt, /支えないミスは書くな/);
+  assert.match(prompt, /VALORANTは video_title/);
 });
 
 test("vod prompts put close-range micro in expanders, live does not", () => {
   assert.match(systemPrompt("match-chunk"), /closeRangeFights/);
   assert.match(systemPrompt("match-chunk"), /斜線/);
   assert.match(systemPrompt("match-chunk"), /段差/);
+  assert.doesNotMatch(systemPrompt("match-chunk"), /video_title/);
   assert.match(systemPrompt("match-merge"), /closeRangeFights/);
+  assert.match(systemPrompt("match-merge"), /video_title/);
+  assert.match(systemPrompt("match-merge"), /区間レポートに書いてある実在のミス/);
   assert.match(systemPrompt("live"), /確殺/);
   assert.match(systemPrompt("live"), /武器名/);
   assert.doesNotMatch(systemPrompt("live"), /"closeRangeFights"/);
   assert.doesNotMatch(systemPrompt("live"), /解説ができた/);
+  assert.doesNotMatch(systemPrompt("live"), /video_title/);
+  assert.doesNotMatch(systemPrompt("live", "en"), /video_title/);
   const mergeText = buildUserText(
     {
       ...sample,
@@ -96,6 +107,7 @@ test("vod prompts put close-range micro in expanders, live does not", () => {
   );
   assert.match(mergeText, /オフアングルを捨てている/);
   assert.match(mergeText, /insights に再掲しない/);
+  assert.match(mergeText, /viralScript は区間レポートにあるミスだけ/);
 });
 
 test("match-merge prompt judges rotation across the whole match", () => {
@@ -168,6 +180,12 @@ test("english system prompt asks for English user-facing strings", () => {
   assert.match(prompt, /調査ビーコン/);
   const clip = systemPrompt("clip", "en");
   assert.match(clip, /English/);
+  assert.match(clip, /at most 100 characters/);
+  assert.match(clip, /video_title, ai_tsukkomi, and cta_text in English/);
+  const notes = buildUserText({ ...sample, game: "apex-legends" }, "clip", false, false);
+  assert.match(notes, /悩み文にある判断ミスだけ/);
+  const vod = buildUserText({ ...sample, game: "apex-legends" }, "clip", true, false);
+  assert.match(vod, /映像が支えないミスは書くな/);
 });
 
 test("live user text includes recent cues for dedupe", () => {

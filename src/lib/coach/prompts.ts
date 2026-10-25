@@ -1,4 +1,4 @@
-import { languageInstruction, resolveCoachLanguage } from "../coach-language.ts";
+import { languageInstruction, resolveCoachLanguage, type CoachLanguage } from "../coach-language.ts";
 import { formatTimestamp } from "../match-plan.ts";
 import { apexMapContext } from "./apex-poi.ts";
 import { COACHING_BAR, FIGHT_EXPLAIN } from "./bar.ts";
@@ -12,6 +12,20 @@ export function playerContext(input: Pick<CoachRequest, "game" | "rank" | "chara
     character: input.character,
     concern: input.concern.trim() || "（未記入。ランクとキャラと画面の根拠から推測）",
   };
+}
+
+const VIRAL_JSON = `"viralScript":{"video_title":string,"ai_tsukkomi":string,"cta_text":string}`;
+
+function viralScriptLines(language: CoachLanguage) {
+  const voice =
+    language === "en"
+      ? "Write video_title, ai_tsukkomi, and cta_text in English. ai_tsukkomi is at most 100 characters. video_title is short enough to fill the screen in the first 2 seconds. cta_text is one line."
+      : "viralScript の3文字列は日本語。ai_tsukkomi は100文字以内。video_title は最初の2秒で画面いっぱいに出る短さ。cta_text は1行。";
+  return `Apexのときだけ viralScript を埋める。VALORANTは video_title も ai_tsukkomi も cta_text も空文字。
+video_title: 最初の2秒で画面に巨大表示するタイトル。この解析の実在する瞬間から。ゲーマーが自分事になるか熱くなる一言。汎用スローガン禁止。
+ai_tsukkomi: 実際に起きているミスを、冷たく一行で突く。リロードのタイミング、離脱の遅れ、スキルの無駄、など、渡された映像または悩み文が支えているものだけ。辛口。具体。講義するな。支えないミスは書くな。根拠がなければ3つとも空文字。
+cta_text: このアプリ（VODCoach.AI、https://vodcoach-ai.vercel.app）へ人を送る締めの一行。
+${voice}`;
 }
 
 export function profileLines(input: Pick<CoachRequest, "game" | "rank" | "character" | "concern">) {
@@ -84,8 +98,10 @@ insights は 1カード = 1つの実在する改善。4枠（aim/positioning/abi
 timestamp は mm:ss のまま。tab は rotation | aim | abilities | endgame | other。
 各区間の closeRangeFights を時系列で残す。薄い要約に潰さず、斜線とインファイトの具体を残す。類似スクラップは1件にまとめる。insights に斜線全文を再掲しない。ノックをキルに書き換えない。
 Apexで区間が同じPOIなら mapPoi を残せ。リファレンスの間取りは事実。特定できない区間の間取りは作るな。
+${viralScriptLines(language)}
+viralScript は区間レポートに書いてある実在のミスから1つ。レポートに無いリロード、離脱、スキルの無駄は作るな。根拠がなければ3つとも空文字。
 JSON形状:
-{"headline":string,"summary":string,"rotationStory":string,"mapPoi":{"map":string,"poi":string},"insights":[{"id":string,"tab":"rotation"|"aim"|"abilities"|"endgame"|"other","timestamp":string,"title":string,"finding":string,"action":string}],"closeRangeFights":[{"id":string,"start":string,"end":string,"title":string,"sightlines":string,"knowHow":string}]}`;
+{"headline":string,"summary":string,"rotationStory":string,"mapPoi":{"map":string,"poi":string},"insights":[{"id":string,"tab":"rotation"|"aim"|"abilities"|"endgame"|"other","timestamp":string,"title":string,"finding":string,"action":string}],"closeRangeFights":[{"id":string,"start":string,"end":string,"title":string,"sightlines":string,"knowHow":string}],${VIRAL_JSON}}`;
   }
   return `${COACHING_BAR}
 ${FIGHT_EXPLAIN}
@@ -99,10 +115,11 @@ id は自由。tab は rotation | aim | abilities | endgame | other。4枠（aim
 勝敗やキルデスだけで褒めたり責めたりしない。汎用スローガンは禁止。
 クリップ動画があるときは映像の時間帯に触れる。JPEGではなく渡された動画そのものを見る。
 近距離スクラップがあるときだけ closeRangeFights。斜線管理（オフアングル、段差、カバー、ピークの権利）と戦闘のノウハウ（誰を撃つか、ユーティリティ、インファイト、ノック後の確殺）は expander 用で厚く。insights は同じ局面の高信号カード（見えていた情報・選択肢・期待値）。斜線の全文は expander へ。ライブ用ではない。
-ノートのみのときは closeRangeFights は空。悩み文をその選手の試合で起きる判断ミスとして具体化する。
+ノートのみのときは closeRangeFights は空。悩み文をその選手の試合で起きる判断ミスとして具体化する。ノートの viralScript も悩み文にある判断だけ。映像が無いのに時刻や武器やリロードを足すな。
 Apexで映像がマップとPOIを示したら mapPoi に id を書け。渡したリファレンスを事実にせよ。特定できなければ間取りを作るな。
+${viralScriptLines(language)}
 JSON形状:
-{"headline":string,"summary":string,"mapPoi":{"map":string,"poi":string},"insights":[{"id":string,"tab":"rotation"|"aim"|"abilities"|"endgame"|"other","timestamp":string,"title":string,"finding":string,"action":string}],"closeRangeFights":[{"id":string,"start":string,"end":string,"title":string,"sightlines":string,"knowHow":string}]}`;
+{"headline":string,"summary":string,"mapPoi":{"map":string,"poi":string},"insights":[{"id":string,"tab":"rotation"|"aim"|"abilities"|"endgame"|"other","timestamp":string,"title":string,"finding":string,"action":string}],"closeRangeFights":[{"id":string,"start":string,"end":string,"title":string,"sightlines":string,"knowHow":string}],${VIRAL_JSON}}`;
 }
 
 export function buildUserText(input: CoachRequest, mode: CoachMode, hasVideo: boolean, hasFrames: boolean) {
@@ -138,6 +155,7 @@ export function buildUserText(input: CoachRequest, mode: CoachMode, hasVideo: bo
     lines.push("回転は全区間の rotation を時系列で読み、試合全体でゾーンファースト／ゾーンカット／漁夫の正誤を判定する。40秒ごとの感想を並べない。");
     lines.push("勝っていても、より高い期待値の詰めがあれば残す。類似はマージ。");
     lines.push("各区間の closeRangeFights があれば試合時刻のまま残す。斜線とインファイトの細部は expander 用。insights に再掲しない。");
+    lines.push("Apexなら viralScript は区間レポートにあるミスだけ。レポートに無いリロード、離脱、スキルの無駄は作るな。根拠が無ければ3つ空。VALORANTは空。");
     if (input.durationSec) lines.push(`試合の長さ: ${formatTimestamp(input.durationSec)}`);
     reports.forEach((report, index) => {
       const start = report.startOffsetSec ?? 0;
@@ -191,8 +209,8 @@ export function buildUserText(input: CoachRequest, mode: CoachMode, hasVideo: bo
 
   lines.push(
     hasVideo
-      ? "クリップ動画を添付しています。動画ファイルそのものを見てコーチングしてください。近距離があれば closeRangeFights に斜線・段差・インファイト・確殺を厚く。読めない武器名は書くな。画面外カバーは勝率が上がるときだけ。ApexでPOIが特定できたらリファレンスは事実。"
-      : "動画なし。ノートコーチングです。悩み文を、そのランクとそのキャラの判断として具体化してください。closeRangeFights は空。",
+      ? "クリップ動画を添付しています。動画ファイルそのものを見てコーチングしてください。近距離があれば closeRangeFights に斜線・段差・インファイト・確殺を厚く。読めない武器名は書くな。画面外カバーは勝率が上がるときだけ。ApexでPOIが特定できたらリファレンスは事実。Apexなら viralScript はこの映像にあるミスだけ。映像が支えないミスは書くな。根拠が無ければ3つ空。VALORANTは空。"
+      : "動画なし。ノートコーチングです。悩み文を、そのランクとそのキャラの判断として具体化してください。closeRangeFights は空。Apexなら viralScript は悩み文にある判断ミスだけ。悩み文に無い時刻や武器やリロードは作るな。具体的でなければ3つ空。VALORANTは空。",
   );
   if (input.videoUrl && hasVideo) {
     lines.push("クリップはクラウド上のHTTPS URLから参照しています。");

@@ -8,6 +8,7 @@ import {
   parseCoachLanguage,
   shareChrome,
   speechLocale,
+  viralChrome,
 } from "./coach-language.ts";
 
 test("language defaults to Japanese", () => {
@@ -28,6 +29,8 @@ test("prompts and cheap chrome switch with language", () => {
   assert.equal(liveChrome("en").speakingNow, "Speaking now");
   assert.equal(shareChrome("ja").label, "X（旧Twitter）にシェアする");
   assert.equal(shareChrome("en").label, "Share on X (Twitter)");
+  assert.equal(viralChrome("ja").heading, "バズる台本");
+  assert.equal(viralChrome("en").heading, "Shorts script");
   assert.equal(fightChrome("ja").sightlines, "細かい斜線管理");
   assert.equal(fightChrome("ja").knowHow, "戦闘のノウハウ");
   assert.equal(fightChrome("en").sightlines, "Fine sightline work");

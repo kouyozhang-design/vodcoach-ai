@@ -5,6 +5,7 @@ import { resolveApexLocation, serializeApexPoi } from "./apex-poi.ts";
 import { fightsFromChunkReports } from "./fight-detail.ts";
 import { mergeSimilarInsights, withInsightTab } from "./insight-tabs.ts";
 import { isEmptyRotation, summarizeRotationTimeline } from "./rotation.ts";
+import { clampChars, defaultCta, TITLE_MAX_CHARS, TSUKKOMI_MAX_CHARS } from "./viral-script.ts";
 import type {
   CloseRangeFight,
   CoachChunkReport,
@@ -12,6 +13,7 @@ import type {
   CoachRequest,
   CoachResponse,
   RotationNote,
+  ViralScript,
   VideoCoachProvider,
 } from "./types.ts";
 import { requestHasClip, resolveCoachMode } from "./types.ts";
@@ -35,6 +37,90 @@ function purposeOf(input: CoachRequest, hasVideo: boolean) {
     return `${input.rank}の${input.character}として、クリップの立ち回りとプレイスタイルを次の試合で勝つ形に寄せる`;
   }
   return `${input.rank} ${input.character}の立ち回りを安定させる`;
+}
+
+function shortsScript(
+  game: CoachRequest["game"],
+  english: boolean,
+  video_title: string,
+  ai_tsukkomi: string,
+): ViralScript | undefined {
+  if (game !== "apex-legends") return undefined;
+  const title = clampChars(video_title, TITLE_MAX_CHARS);
+  const tsukkomi = clampChars(ai_tsukkomi, TSUKKOMI_MAX_CHARS);
+  if (!title || !tsukkomi) return undefined;
+  return { video_title: title, ai_tsukkomi: tsukkomi, cta_text: defaultCta(english ? "en" : "ja") };
+}
+
+function clipShorts(input: CoachRequest, hasVideo: boolean, english: boolean): ViralScript | undefined {
+  if (input.game !== "apex-legends") return undefined;
+  if (hasVideo) {
+    return shortsScript(
+      input.game,
+      english,
+      english ? "You peeked the front" : "オフアングル捨てて正面",
+      english
+        ? "00:12 you dumped the off-angle and took the front peek."
+        : "00:12、オフアングル捨てて正面ピーク。権利は敵。",
+    );
+  }
+  const concern = input.concern.trim();
+  if (!concern) return undefined;
+  const aboutCover = /遮蔽|射線|ダウン|cover|sightline/i.test(concern);
+  if (!aboutCover) {
+    return shortsScript(input.game, english, concern, concern);
+  }
+  return shortsScript(
+    input.game,
+    english,
+    english ? "You left the cover" : "遮蔽、自分で離してる",
+    english
+      ? "Close range, you step off cover and open two lines."
+      : "近接で遮蔽を離れて2射線。先に落ちるのはそこ。",
+  );
+}
+
+function mergeShorts(
+  input: CoachRequest,
+  insights: CoachInsight[],
+  fights: CloseRangeFight[],
+): ViralScript | undefined {
+  if (input.game !== "apex-legends") return undefined;
+  const english = resolveCoachLanguage(input) === "en";
+  const moment =
+    insights.find((insight) => insight.title.trim() && insight.tab !== "rotation") ??
+    insights.find((insight) => insight.title.trim());
+  const fight = fights[0];
+  const rawTitle = (moment?.title || fight?.title || "").trim();
+  if (!rawTitle) return undefined;
+  const stamp = (moment?.timestamp || fight?.start || "").trim();
+  const evidence = `${rawTitle} ${fight?.title ?? ""} ${fight?.sightlines ?? ""}`;
+  if (english && /[ぁ-んァ-ン一-龯]/.test(rawTitle)) {
+    if (/射線|ピーク|オフアングル|岩|遮蔽/.test(evidence)) {
+      return shortsScript(
+        input.game,
+        true,
+        "Two sightlines at once",
+        `${stamp ? `${stamp} ` : ""}you opened two sightlines. Cut it to one.`.trim(),
+      );
+    }
+    if (/ゾーン|漁夫|回転/.test(evidence)) {
+      return shortsScript(
+        input.game,
+        true,
+        "Zone before the fight",
+        `${stamp ? `${stamp} ` : ""}that rotate gives up the zone. Take space first.`.trim(),
+      );
+    }
+    return undefined;
+  }
+  const when = stamp ? (english ? `${stamp} ` : `${stamp}、`) : "";
+  return shortsScript(
+    input.game,
+    english,
+    rawTitle,
+    english ? `${when}${rawTitle}. That's the miss.` : `${when}${rawTitle}。そこがミス。`,
+  );
 }
 
 function buildCoachResponse(input: CoachRequest): CoachResponse {
@@ -67,6 +153,7 @@ function buildCoachResponse(input: CoachRequest): CoachResponse {
     insights: buildInsights(input, hasVideo, isApex, purpose, english),
     closeRangeFights: buildClipFights(input, hasVideo, isApex, english),
     mapPoi: serializeApexPoi(explicitApexPoi(input)),
+    viralScript: clipShorts(input, hasVideo, english),
   };
 }
 
@@ -210,6 +297,8 @@ function buildMergeResponse(input: CoachRequest): CoachResponse {
     rotationInsight ? [rotationInsight, ...withClose] : withClose,
   );
   const rotationStory = matchRotationStory(input, reports);
+  const fights = fightsFromChunkReports(reports);
+  const viralScript = mergeShorts(input, insights, fights);
 
   return {
     analysisId: crypto.randomUUID(),
@@ -224,8 +313,9 @@ function buildMergeResponse(input: CoachRequest): CoachResponse {
             input.durationSec ? `対象の長さは約 ${formatTimestamp(input.durationSec)} です。` : ""
           }`,
     insights,
-    closeRangeFights: fightsFromChunkReports(reports),
+    closeRangeFights: fights,
     mapPoi: serializeApexPoi(explicitApexPoi(input)),
+    viralScript,
     rotationStory: rotationStory || undefined,
     durationSec: input.durationSec,
   };

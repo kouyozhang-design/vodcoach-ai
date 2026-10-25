@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { charLength } from "./viral-script.ts";
 import { videoCoachProvider } from "./mock-provider.ts";
 import type { CoachRequest } from "./types.ts";
 
@@ -38,6 +39,25 @@ test("mock notes and clip stay personalized and are not locked to four ids", asy
   assert.match(clip.closeRangeFights?.[0].knowHow ?? "", /確殺/);
   assert.doesNotMatch(clip.closeRangeFights?.[0].sightlines ?? "", /R-301|ヴァンダル/);
   assert.equal((notes.closeRangeFights ?? []).length, 0);
+  assert.match(notes.viralScript?.video_title ?? "", /遮蔽/);
+  assert.match(notes.viralScript?.ai_tsukkomi ?? "", /遮蔽/);
+  assert.doesNotMatch(notes.viralScript?.ai_tsukkomi ?? "", /\d{2}:\d{2}/);
+  assert.ok(charLength(notes.viralScript?.ai_tsukkomi ?? "") <= 100);
+  assert.match(notes.viralScript?.cta_text ?? "", /vodcoach-ai\.vercel\.app/);
+  assert.match(clip.viralScript?.ai_tsukkomi ?? "", /00:12/);
+  assert.match(clip.viralScript?.ai_tsukkomi ?? "", /オフアングル|正面/);
+  assert.ok(charLength(clip.viralScript?.ai_tsukkomi ?? "") <= 100);
+  assert.equal(clip.viralScript?.video_title, "オフアングル捨てて正面");
+
+  const valorant = await videoCoachProvider.analyze({
+    ...base,
+    game: "valorant",
+    rank: "Diamond",
+    character: "Jett",
+    mode: "clip",
+    videoUrl: "https://example.com/clip.mp4",
+  });
+  assert.equal(valorant.viralScript, undefined);
 });
 
 test("mock match-chunk can return zero tips on a quiet window", async () => {
@@ -79,6 +99,7 @@ test("mock match-merge does not invent filler when chunks are empty", async () =
   assert.equal(merged.insights.length, 0);
   assert.match(merged.summary, /指摘すべき局面はありませんでした/);
   assert.equal(merged.rotationStory, undefined);
+  assert.equal(merged.viralScript, undefined);
 });
 
 test("mock match-merge judges rotation across the match and keeps a higher-EV close", async () => {
@@ -168,6 +189,35 @@ test("mock match-merge judges rotation across the match and keeps a higher-EV cl
   assert.ok(aimCards.length <= 2);
   assert.equal((merged.closeRangeFights ?? []).length, 1);
   assert.match(merged.closeRangeFights?.[0].sightlines ?? "", /ピーク/);
+  assert.match(merged.viralScript?.ai_tsukkomi ?? "", /00:04/);
+  assert.match(merged.viralScript?.ai_tsukkomi ?? "", /射線/);
+  assert.ok(charLength(merged.viralScript?.ai_tsukkomi ?? "") <= 100);
+  assert.match(merged.viralScript?.cta_text ?? "", /vodcoach-ai\.vercel\.app/);
+
+  const valorantMerge = await videoCoachProvider.analyze({
+    ...base,
+    game: "valorant",
+    rank: "Diamond",
+    character: "Jett",
+    mode: "match-merge",
+    chunkReports: [
+      {
+        startOffsetSec: 0,
+        endOffsetSec: 40,
+        insights: [
+          {
+            id: "swing",
+            tab: "aim",
+            timestamp: "00:08",
+            title: "heavenを残してスイング",
+            finding: "2アングル",
+            action: "壁へ戻る",
+          },
+        ],
+      },
+    ],
+  });
+  assert.equal(valorantMerge.viralScript, undefined);
 });
 
 test("mock live speaks once then skips repeats via recentCues", async () => {
@@ -179,6 +229,7 @@ test("mock live speaks once then skips repeats via recentCues", async () => {
   assert.equal(first.shouldSpeak, true);
   assert.ok(first.insights.length > 0);
   assert.equal((first.closeRangeFights ?? []).length, 0);
+  assert.equal(first.viralScript, undefined);
   assert.equal(first.speakMoment, "mid-range");
   assert.equal(first.nextMove, "disengage");
   assert.match(first.spokenLine ?? "", /中距離/);
@@ -213,6 +264,10 @@ test("mock notes English writes English insights", async () => {
   const notes = await videoCoachProvider.analyze({ ...base, language: "en", mode: "clip" });
   assert.match(notes.headline, /notes/);
   assert.match(notes.insights[0].title, /shot|Crosshair|sightlines/i);
+  assert.match(notes.viralScript?.video_title ?? "", /cover/i);
+  assert.match(notes.viralScript?.ai_tsukkomi ?? "", /cover|sightline|lines/i);
+  assert.doesNotMatch(notes.viralScript?.ai_tsukkomi ?? "", /遮蔽|射線/);
+  assert.ok(charLength(notes.viralScript?.ai_tsukkomi ?? "") <= 100);
 });
 
 test("mock clip English writes English fight expanders", async () => {
@@ -225,6 +280,10 @@ test("mock clip English writes English fight expanders", async () => {
   assert.ok((clip.closeRangeFights ?? []).length >= 1);
   assert.match(clip.closeRangeFights?.[0].sightlines ?? "", /off-angle|peek/i);
   assert.doesNotMatch(clip.closeRangeFights?.[0].sightlines ?? "", /オフアングル/);
+  assert.match(clip.viralScript?.ai_tsukkomi ?? "", /00:12/);
+  assert.match(clip.viralScript?.ai_tsukkomi ?? "", /off-angle|front peek/i);
+  assert.doesNotMatch(clip.viralScript?.video_title ?? "", /[ぁ-んァ-ン一-龯]/);
+  assert.ok(charLength(clip.viralScript?.ai_tsukkomi ?? "") <= 100);
 });
 
 test("mock live uses survey beacon scan for the next move", async () => {

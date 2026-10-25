@@ -12,6 +12,7 @@ import { InsightBoard } from "@/components/insight-board";
 import { LiveSession } from "@/components/live-session";
 import { ProPlanControls } from "@/components/pro-plan-controls";
 import { ShareTweetButton } from "@/components/share-tweet-button";
+import { ViralScriptBlock } from "@/components/viral-script-block";
 import {
   DEFAULT_COACH_LANGUAGE,
   readStoredLanguage,
@@ -728,6 +729,9 @@ export default function Home() {
                     videoUrl={uploadedVideoUrl}
                     frames={analysisFrames}
                   />
+                  {result.viralScript ? (
+                    <ViralScriptBlock script={result.viralScript} language={language} />
+                  ) : null}
                   <div className="mt-6 flex justify-end border-t border-white/[0.06] pt-5">
                     <ShareTweetButton result={result} language={language} />
                   </div>
