@@ -10,6 +10,7 @@ import {
 import { FightExpanders } from "@/components/fight-expanders";
 import { InsightBoard } from "@/components/insight-board";
 import { LiveSession } from "@/components/live-session";
+import { ProPlanControls } from "@/components/pro-plan-controls";
 import { ShareTweetButton } from "@/components/share-tweet-button";
 import {
   DEFAULT_COACH_LANGUAGE,
@@ -488,7 +489,7 @@ export default function Home() {
       <div className="pointer-events-none absolute inset-x-0 top-0 h-[620px] bg-[radial-gradient(ellipse_at_top,rgba(220,38,38,0.18),transparent_62%)]" />
       <div className="pointer-events-none absolute inset-0 opacity-[0.035] [background-image:linear-gradient(rgba(255,255,255,.15)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.15)_1px,transparent_1px)] [background-size:44px_44px]" />
       <div className="relative mx-auto max-w-[1480px] px-4 pb-10 sm:px-6 lg:px-10">
-        <header className="flex h-18 items-center justify-between border-b border-white/[0.06]">
+        <header className="flex min-h-18 flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-white/[0.06] py-2">
           <div className="flex items-center gap-3">
             <div className="relative grid size-9 place-items-center overflow-hidden rounded-xl bg-gradient-to-br from-red-500 to-red-800 shadow-[0_0_28px_rgba(239,68,68,.3)]">
               <span className="absolute -right-1 -top-2 text-2xl font-black italic text-white/15">A</span>
@@ -499,7 +500,8 @@ export default function Home() {
               <p className="text-[9px] uppercase tracking-[0.2em] text-zinc-600">Multigame intelligence</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
+            <ProPlanControls language={language} />
             <div
               role="radiogroup"
               aria-label="Language"

@@ -1,0 +1,93 @@
+"use client";
+
+import { FormEvent, Suspense, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { authCopy } from "@/lib/billing/copy";
+import { useCoachLanguage } from "@/lib/use-coach-language";
+
+function AuthForm() {
+  const language = useCoachLanguage();
+  const copy = authCopy(language);
+  const callbackError = useSearchParams().get("error") === "callback";
+  const [email, setEmail] = useState("");
+  const [notice, setNotice] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPending(true);
+    setNotice(null);
+    try {
+      const response = await fetch("/api/auth/email", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      if (response.status === 503) {
+        setNotice(copy.missing);
+        return;
+      }
+      if (response.status === 400) {
+        setNotice(copy.invalid);
+        return;
+      }
+      if (!response.ok) {
+        setNotice(copy.failed);
+        return;
+      }
+      setNotice(copy.sent);
+    } catch {
+      setNotice(copy.failed);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6 text-white">
+      <p className="text-[15px] font-bold tracking-[-0.03em]">
+        VODCoach<span className="text-red-500">.AI</span>
+      </p>
+      <h1 className="mt-6 text-3xl font-semibold tracking-[-0.04em]">{copy.title}</h1>
+      <p className="mt-3 text-sm leading-6 text-zinc-400">{copy.body}</p>
+      <form onSubmit={onSubmit} className="mt-6 space-y-3">
+        <label className="block space-y-2">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.13em] text-zinc-500">{copy.email}</span>
+          <input
+            type="email"
+            required
+            autoComplete="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            className="h-11 w-full rounded-xl border border-white/[0.08] bg-white/[0.035] px-3.5 text-sm text-zinc-200 outline-none focus:border-red-500/60"
+          />
+        </label>
+        <button
+          type="submit"
+          disabled={pending}
+          className="h-11 w-full rounded-xl bg-red-600 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-60"
+        >
+          {pending ? copy.sending : copy.submit}
+        </button>
+      </form>
+      {callbackError ? <p className="mt-4 text-sm text-amber-200/90">{copy.callback}</p> : null}
+      {notice ? (
+        <p className="mt-4 text-sm text-zinc-300" role="status">
+          {notice}
+        </p>
+      ) : null}
+      <Link href="/" className="mt-8 text-sm text-zinc-500 hover:text-white">
+        {copy.back}
+      </Link>
+    </main>
+  );
+}
+
+export default function AuthPage() {
+  return (
+    <Suspense fallback={null}>
+      <AuthForm />
+    </Suspense>
+  );
+}
