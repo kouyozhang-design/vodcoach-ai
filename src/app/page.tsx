@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  DragEvent, MouseEvent, useEffect, useRef, useState, useSyncExternalStore,
+  ChangeEvent, DragEvent, MouseEvent, useEffect, useRef, useState, useSyncExternalStore,
 } from "react";
 import {
   AlertCircle, Check, ChevronDown, FileVideo, Gamepad2, LoaderCircle,
@@ -20,7 +20,6 @@ import {
   type CoachLanguage,
 } from "@/lib/coach-language";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
@@ -43,10 +42,11 @@ import {
   type MatchChunk,
 } from "@/lib/match-plan";
 import {
+  COACH_FILE_ACCEPT,
+  STATIC_FILE_INPUT_ATTR,
+  clearFileInputValue,
   fileFromDataTransfer,
   installSafariValidityPatch,
-  isSafariBrowser,
-  pickVideoFileFromUser,
   removeDocumentFileInputs,
   silenceNativeValidation,
 } from "@/lib/pick-video-file";
@@ -56,14 +56,6 @@ import { uploadClipToBlob } from "@/lib/upload-clip";
 import { isAllowedCoachVideo } from "@/lib/video";
 
 const MAX_BYTES = MAX_CLIP_BYTES;
-
-function subscribeNoop() {
-  return () => undefined;
-}
-
-function getSafariDropOnly() {
-  return isSafariBrowser();
-}
 
 function subscribeLanguage(onStoreChange: () => void) {
   window.addEventListener("storage", onStoreChange);
@@ -134,7 +126,6 @@ export default function Home() {
   const [result, setResult] = useState<CoachResponse | null>(null);
   const [uploadedVideoUrl, setUploadedVideoUrl] = useState("");
   const [analysisFrames, setAnalysisFrames] = useState<CoachFrame[]>([]);
-  const safariDropOnly = useSyncExternalStore(subscribeNoop, getSafariDropOnly, () => true);
   const language = useSyncExternalStore(subscribeLanguage, readStoredLanguage, () => DEFAULT_COACH_LANGUAGE);
   const urlRef = useRef("");
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -207,12 +198,9 @@ export default function Home() {
     setStatus("ready");
   }
 
-  async function pickVideoFile() {
-    if (isSafariBrowser()) {
-      setError("Safariでは動画ファイルをドロップしてください。");
-      return;
-    }
-    const nextFile = await pickVideoFileFromUser();
+  function onFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const nextFile = event.currentTarget.files?.item(0) ?? null;
+    clearFileInputValue(event.currentTarget);
     if (nextFile) acceptVideo(nextFile);
   }
 
@@ -602,17 +590,28 @@ export default function Home() {
                   data-testid="clip-dropzone"
                   onDragEnter={(event) => { event.preventDefault(); setDragging(true); }}
                   onDragOver={(event) => event.preventDefault()}
-                  onDragLeave={() => setDragging(false)}
+                  onDragLeave={(event) => {
+                    if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+                    setDragging(false);
+                  }}
                   onDrop={onDrop}
-                  onClick={safariDropOnly ? undefined : pickVideoFile}
-                  className={`group flex min-h-40 flex-col items-center justify-center rounded-2xl border border-dashed p-5 text-center transition sm:min-h-52 ${safariDropOnly ? "" : "cursor-pointer"} ${dragging ? "border-red-400 bg-red-500/10" : "border-white/10 bg-black/20 hover:border-red-500/40 hover:bg-red-500/[0.035]"}`}
+                  className={`group relative flex min-h-40 cursor-pointer flex-col items-center justify-center overflow-hidden rounded-2xl border border-dashed p-5 text-center transition focus-within:border-red-500/60 sm:min-h-52 ${dragging ? "border-red-400 bg-red-500/10" : "border-white/10 bg-black/20 hover:border-red-500/40 hover:bg-red-500/[0.035]"}`}
                 >
-                  <div className="grid size-12 place-items-center rounded-2xl border border-white/[0.08] bg-white/[0.035] shadow-lg shadow-black/30"><UploadCloud className="size-5 text-red-400 transition group-hover:-translate-y-0.5" /></div>
-                  <p className="mt-4 text-sm font-medium">{safariDropOnly ? "動画をドロップしてください" : "動画をドロップ、または選択"}</p>
-                  <p className="mt-1.5 text-[11px] text-zinc-600">{safariDropOnly ? "Safariではファイル選択の代わりに、クリップをここにドロップします。" : `${gameConfig.uploadHint}。クリップだけでも解析できます。`}</p>
-                  {!safariDropOnly && (
-                    <Button type="button" size="sm" className="mt-4 bg-white text-black hover:bg-zinc-200" onClick={(event) => { event.stopPropagation(); void pickVideoFile(); }}>ファイルを選ぶ</Button>
-                  )}
+                  <input
+                    type="file"
+                    accept={COACH_FILE_ACCEPT}
+                    {...{ [STATIC_FILE_INPUT_ATTR]: "static" }}
+                    data-testid="clip-file-input"
+                    aria-label="動画ファイルを選ぶ"
+                    onChange={onFileChange}
+                    className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
+                  />
+                  <div className="pointer-events-none flex flex-col items-center">
+                    <div className="grid size-12 place-items-center rounded-2xl border border-white/[0.08] bg-white/[0.035] shadow-lg shadow-black/30"><UploadCloud className="size-5 text-red-400 transition group-hover:-translate-y-0.5" /></div>
+                    <p className="mt-4 text-sm font-medium">動画をドロップ、または選択</p>
+                    <p className="mt-1.5 text-[11px] text-zinc-600">{gameConfig.uploadHint}。クリップだけでも解析できます。</p>
+                    <span className="mt-4 inline-flex h-7 items-center rounded-lg bg-white px-2.5 text-[0.8rem] font-medium text-black">ファイルを選ぶ</span>
+                  </div>
                 </div>
               ) : (
                 <div className="overflow-hidden rounded-2xl border border-white/[0.08] bg-black">
@@ -665,7 +664,7 @@ export default function Home() {
               <div className="flex min-h-[520px] flex-col items-center justify-center px-6 py-10 text-center sm:min-h-[620px] sm:px-8">
                 <div className="relative"><div className="absolute -inset-7 rounded-full bg-red-500/10 blur-2xl" /><div className="relative grid size-16 place-items-center rounded-2xl border border-white/[0.08] bg-white/[0.03]"><Play className="ml-1 size-6 fill-red-500/20 text-red-400" /></div></div>
                 <p className="mt-6 text-base font-semibold">{file ? "解析の準備ができました" : "動画だけでもコーチングできます"}</p>
-                <p className="mt-2 max-w-sm text-xs leading-5 text-zinc-600">{file ? "90秒以下はそのまま。それより長い試合は分割して、タイムスタンプ付きの指摘を種類ごとにまとめ、回転は試合全体で判定します。" : "クリップまたは試合一本をドロップするか、立ち回り・目的を書いて解析を開始できます。"}</p>
+                <p className="mt-2 max-w-sm text-xs leading-5 text-zinc-600">{file ? "90秒以下はそのまま。それより長い試合は分割して、タイムスタンプ付きの指摘を種類ごとにまとめ、回転は試合全体で判定します。" : "クリップまたは試合一本を選択するかドロップするか、立ち回り・目的を書いて解析を開始できます。"}</p>
                 <div className="mt-7 grid w-full max-w-md grid-cols-2 gap-2 text-left sm:grid-cols-3 lg:grid-cols-5">
                   {["立ち回り/回転", "エイム", "スキル", "詰め/終盤", "その他"].map((item, index) => <div key={item} className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5"><span className="text-[9px] text-red-400">0{index + 1}</span><p className="mt-1 text-[10px] text-zinc-500">{item}</p></div>)}
                 </div>

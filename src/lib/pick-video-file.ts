@@ -1,8 +1,15 @@
 "use client";
 
-type OpenFilePicker = (options?: { multiple?: boolean }) => Promise<Array<{ getFile: () => Promise<File> }>>;
+/**
+ * iOS shows camera, photo library, and Files when accept includes both.
+ * Do not add a capture attribute — that skips the library and Files.
+ */
+export const COACH_FILE_ACCEPT = "image/*,video/*";
 
-/** WebKit/Safari — never create <input type="file">; WebKit reports accept as patternMismatch. */
+/** Marks the one React-rendered file input so cleanup never removes it. */
+export const STATIC_FILE_INPUT_ATTR = "data-vodcoach-file-input";
+
+/** WebKit/Safari — file inputs must stay the static React node. Script-created ones surface patternMismatch. */
 export function isSafariBrowser() {
   if (typeof navigator === "undefined") return false;
   const ua = navigator.userAgent;
@@ -12,37 +19,38 @@ export function isSafariBrowser() {
   return /Safari/i.test(ua) && !/Chrome|Chromium|CriOS|Edg|EdgiOS|OPR|Firefox|FxiOS|Android/i.test(ua);
 }
 
-export function canUseOpenFilePicker() {
-  return typeof window !== "undefined"
-    && typeof (window as unknown as { showOpenFilePicker?: OpenFilePicker }).showOpenFilePicker === "function";
-}
-
 export function fileFromDataTransfer(transfer: DataTransfer | null): File | null {
   const list = transfer?.files;
   const raw = list && list.length > 0 ? list.item(0) : null;
-  if (!raw) return null;
-  return cloneCoachFile(raw);
+  // Keep the original File. Copying its bytes stalls Safari upload at 0%.
+  return raw;
 }
 
-export function cloneCoachFile(file: File) {
-  return new File([file], file.name, { type: file.type, lastModified: file.lastModified });
+export function isStaticCoachFileInput(node: Element) {
+  return node instanceof HTMLInputElement && node.getAttribute(STATIC_FILE_INPUT_ATTR) === "static";
 }
 
+export function clearFileInputValue(input: HTMLInputElement) {
+  try {
+    input.value = "";
+  } catch {
+    /* Safari may block value writes on file inputs. */
+  }
+}
+
+/** Drop script-created file inputs only. The React input stays in the tree. */
 export function removeDocumentFileInputs() {
   if (typeof document === "undefined") return;
   document.querySelectorAll('input[type="file"]').forEach((node) => {
-    const input = node as HTMLInputElement;
-    input.disabled = true;
-    input.removeAttribute("accept");
-    input.removeAttribute("required");
-    input.removeAttribute("pattern");
-    input.removeAttribute("form");
-    try {
-      input.value = "";
-    } catch {
-      /* Safari may block value writes on file inputs. */
-    }
-    input.remove();
+    if (!(node instanceof HTMLInputElement) || isStaticCoachFileInput(node)) return;
+    node.disabled = true;
+    node.removeAttribute("accept");
+    node.removeAttribute("required");
+    node.removeAttribute("pattern");
+    node.removeAttribute("form");
+    node.removeAttribute("capture");
+    clearFileInputValue(node);
+    node.remove();
   });
 }
 
@@ -75,23 +83,4 @@ export function installSafariValidityPatch() {
     proto.reportValidity = report;
     proto.checkValidity = check;
   };
-}
-
-export async function pickVideoFileFromUser(): Promise<File | null> {
-  if (typeof window === "undefined") return null;
-  if (isSafariBrowser()) return null;
-  removeDocumentFileInputs();
-  if (!canUseOpenFilePicker()) return null;
-
-  try {
-    const picker = (window as unknown as { showOpenFilePicker: OpenFilePicker }).showOpenFilePicker;
-    const handles = await picker.call(window, { multiple: false });
-    const file = await handles[0]?.getFile();
-    return file ? cloneCoachFile(file) : null;
-  } catch (error) {
-    if (error instanceof DOMException && (error.name === "AbortError" || error.name === "NotAllowedError")) {
-      return null;
-    }
-    return null;
-  }
 }
