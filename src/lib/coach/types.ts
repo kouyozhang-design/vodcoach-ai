@@ -71,6 +71,8 @@ export type CoachRequest = {
   recentCues?: string[];
   /** ja default. English when the user picks it. */
   language?: CoachLanguage;
+  /** Apex only. Client-sticky map+POI so live ticks send one slice, not the atlas. */
+  mapPoi?: { map: string; poi: string };
 };
 
 export type CoachChunkReport = {
@@ -81,6 +83,7 @@ export type CoachChunkReport = {
   rotation?: RotationNote;
   startOffsetSec?: number;
   endOffsetSec?: number;
+  mapPoi?: { map: string; poi: string };
 };
 
 export type CoachResponse = {
@@ -105,6 +108,8 @@ export type CoachResponse = {
   nextMove?: LiveNextMove;
   rotation?: RotationNote;
   rotationStory?: string;
+  /** Apex only. Echoed so the next live tick can send just this POI slice. */
+  mapPoi?: { map: string; poi: string };
 };
 
 export interface VideoCoachProvider {

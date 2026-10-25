@@ -33,6 +33,8 @@ test("live prompt speaks only on real cues", () => {
   assert.match(prompt, /調査ビーコン/);
   assert.match(prompt, /辛口/);
   assert.match(prompt, /種類タブ/);
+  assert.match(prompt, /mapPoi/);
+  assert.match(prompt, /勝率が上がる/);
 });
 
 test("match-chunk prompt allows zero timestamped tips and always records rotation", () => {

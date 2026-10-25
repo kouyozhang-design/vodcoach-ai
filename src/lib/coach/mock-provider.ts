@@ -1,6 +1,7 @@
 import { resolveCoachLanguage } from "../coach-language.ts";
 import { looksLikeSurveyBeacon } from "../live-speech.ts";
 import { formatTimestamp, shiftTimestamp } from "../match-plan.ts";
+import { resolveApexLocation, serializeApexPoi } from "./apex-poi.ts";
 import { fightsFromChunkReports } from "./fight-detail.ts";
 import { mergeSimilarInsights, withInsightTab } from "./insight-tabs.ts";
 import { isEmptyRotation, summarizeRotationTimeline } from "./rotation.ts";
@@ -65,7 +66,13 @@ function buildCoachResponse(input: CoachRequest): CoachResponse {
           : `${input.rank} ${input.character}向けのノートコーチングです。ヘッドラインとアングルの切り方を具体化しています。目的: 「${purpose}」。`,
     insights: buildInsights(input, hasVideo, isApex, purpose, english),
     closeRangeFights: buildClipFights(input, hasVideo, isApex, english),
+    mapPoi: serializeApexPoi(explicitApexPoi(input)),
   };
+}
+
+function explicitApexPoi(input: CoachRequest) {
+  const location = resolveApexLocation(input);
+  return location?.poiId ? { mapId: location.mapId, poiId: location.poiId } : undefined;
 }
 
 function rotationForChunk(input: CoachRequest): RotationNote {
@@ -182,6 +189,7 @@ function buildMatchChunkResponse(input: CoachRequest): CoachResponse {
     summary: `${input.rank}の${input.character}。この時間帯から、見えていた情報で期待値を落とした局面だけを残しました。勝っていても詰めを見ています。`,
     insights,
     closeRangeFights: buildChunkFights(input, start, isApex),
+    mapPoi: serializeApexPoi(explicitApexPoi(input)),
     rotation,
     durationSec: input.durationSec,
     chunk: {
@@ -217,6 +225,7 @@ function buildMergeResponse(input: CoachRequest): CoachResponse {
           }`,
     insights,
     closeRangeFights: fightsFromChunkReports(reports),
+    mapPoi: serializeApexPoi(explicitApexPoi(input)),
     rotationStory: rotationStory || undefined,
     durationSec: input.durationSec,
   };
@@ -336,6 +345,7 @@ function buildLiveResponse(input: CoachRequest): CoachResponse {
           action: "西の撃ち合いが落ちてから入る。ゾーン内側の岩で待つ。",
         },
       ],
+      mapPoi: serializeApexPoi(explicitApexPoi(input)),
     };
   }
   if ((input.recentCues?.length ?? 0) > 0) {
@@ -390,6 +400,7 @@ function buildLiveResponse(input: CoachRequest): CoachResponse {
           : "2歩下がって壁でheavenを隠し、止まって2発だけ撃つ。キル結果ではなく開いたアングル数で評価する。",
       },
     ],
+    mapPoi: serializeApexPoi(explicitApexPoi(input)),
   };
 }
 
@@ -408,7 +419,7 @@ function buildClipFights(
         start: "00:10",
         end: "00:18",
         title: isApex ? "Front door peek instead of the off-angle" : "Swings heaven with the off-angle empty",
-        sightlines: `${who} at 00:12. Off-angle sits on the right rock lip (a step, not stairs). You take the front peek. Enemy owns that peek. Cover is one step left. Teammates can trade only the left line. If the better play is the door or cover off-frame, say so even when it is not on screen.`,
+        sightlines: `${who} at 00:12. Off-angle sits on the right rock lip (a step, not stairs). You take the front peek. Enemy owns that peek. Cover is one step left. Teammates can trade only the left line. Name off-screen cover only when it raises win rate in this fight.`,
         knowHow: "Reset to one body visible. Utility before the swing. Shoot door first, then the cover player. A knock is not a kill — thirst, reset, or third-party. Gun stays unnamed unless the HUD is readable.",
       },
     ];
@@ -419,7 +430,7 @@ function buildClipFights(
       start: "00:10",
       end: "00:18",
       title: isApex ? "岩右のオフアングルを捨てて正面ピーク" : "オフアングルを空にしてheavenを開く",
-      sightlines: `00:12、${who}。岩の右は段差（リップ）で階段ではない。オフアングルがあるのに正面を開いている。ピークの権利は正面の敵。カバーは左へ1歩。味方がトレードできるのは左の1本だけ。画面外の扉やカバーが期待値なら、今見えていなくても提案する。`,
+      sightlines: `00:12、${who}。岩の右は段差（リップ）で階段ではない。オフアングルがあるのに正面を開いている。ピークの権利は正面の敵。カバーは左へ1歩。味方がトレードできるのは左の1本だけ。画面外カバーは、今の局面で勝率が上がるときだけ。`,
       knowHow: "見える体を1人に削ってから出せ。タクティカルはスイング前。撃つ順はドア→カバー側。ノックはキルではない。確殺／リセット／漁夫を選べ。HUDが読めていない銃の固有名は書くな。",
     },
   ];

@@ -4,6 +4,7 @@ import { formatTimestamp } from "@/lib/match-plan";
 import { mimeFromFileName } from "@/lib/video";
 import { resolveCoachLanguage, type CoachLanguage } from "../coach-language";
 import { spokenLineForCue, parseNextMove, parseSpeakMoment } from "../live-speech";
+import { pickApexPoiFromParsed, serializeApexPoi } from "./apex-poi";
 import { resolveCloseRangeFights } from "./fight-detail";
 import { insightsFromParsed } from "./insight-tabs";
 import { buildUserText, systemPrompt } from "./prompts";
@@ -387,6 +388,13 @@ function schemaFor(mode: CoachMode) {
     properties.rotationStory = { type: "STRING" };
     required.push("rotationStory");
   }
+  properties.mapPoi = {
+    type: "OBJECT",
+    properties: {
+      map: { type: "STRING" },
+      poi: { type: "STRING" },
+    },
+  };
   if (mode !== "live") {
     properties.closeRangeFights = {
       type: "ARRAY",
@@ -436,6 +444,8 @@ function toCoachResponse(parsed: Record<string, unknown>, input: CoachRequest, m
   };
   const fights = resolveCloseRangeFights(parsed, input, mode);
   if (fights.length > 0) response.closeRangeFights = fights;
+  const mapPoi = serializeApexPoi(pickApexPoiFromParsed(parsed, input));
+  if (mapPoi) response.mapPoi = mapPoi;
   if (mode === "live") {
     const speakMoment = parseSpeakMoment(parsed.speakMoment);
     if (speakMoment) response.speakMoment = speakMoment;

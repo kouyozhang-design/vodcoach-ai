@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { parseCoachLanguage } from "@/lib/coach-language";
+import { parseApexPoiRef, serializeApexPoi } from "@/lib/coach/apex-poi";
 import { parseCloseRangeFights } from "@/lib/coach/fight-detail";
 import { parseInsightTab } from "@/lib/coach/insight-tabs";
 import { getCoachProvider } from "@/lib/coach/provider";
@@ -38,6 +39,7 @@ type ParsedCoachBody = {
   chunkReports?: CoachChunkReport[];
   recentCues?: string[];
   language?: "ja" | "en";
+  mapPoi?: { map: string; poi: string };
 };
 
 export async function POST(request: Request) {
@@ -89,6 +91,7 @@ export async function POST(request: Request) {
     if (parsed.segmentOnly) payload.segmentOnly = true;
     if (parsed.chunkReports) payload.chunkReports = parsed.chunkReports;
     if (parsed.recentCues) payload.recentCues = parsed.recentCues;
+    if (parsed.mapPoi) payload.mapPoi = parsed.mapPoi;
 
     const result = await getCoachProvider().analyze(payload);
     return NextResponse.json(result);
@@ -127,6 +130,7 @@ async function readCoachBody(request: Request): Promise<ParsedCoachBody | NextRe
   if (chunkReports instanceof NextResponse) return chunkReports;
   const recentCues = parseRecentCues(body.recentCues);
   if (recentCues instanceof NextResponse) return recentCues;
+  const mapPoi = serializeApexPoi(parseApexPoiRef(body.mapPoi));
 
   const mode = resolveCoachMode({ mode: stringifyField(body.mode) as CoachMode });
 
@@ -147,6 +151,7 @@ async function readCoachBody(request: Request): Promise<ParsedCoachBody | NextRe
     chunkReports,
     recentCues,
     language: parseCoachLanguage(body.language),
+    mapPoi,
   };
 }
 
@@ -243,6 +248,7 @@ function parseChunkReports(value: unknown): CoachChunkReport[] | undefined | Nex
       rotation: parseRotation(row.rotation),
       startOffsetSec: parseNumber(row.startOffsetSec),
       endOffsetSec: parseNumber(row.endOffsetSec),
+      mapPoi: serializeApexPoi(parseApexPoiRef(row.mapPoi)),
     });
   }
   return reports;

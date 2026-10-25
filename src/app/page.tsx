@@ -339,6 +339,7 @@ export default function Home() {
       let finished = 0;
 
       const analyzeChunk = async (chunk: MatchChunk, frames: CoachFrame[]) => {
+        const knownPoi = reports.find((report) => report?.mapPoi)?.mapPoi;
         const payload = await coach({
           ...base,
           videoUrl,
@@ -349,6 +350,7 @@ export default function Home() {
           durationSec: duration,
           chunkIndex: chunk.index,
           chunkCount: chunks.length,
+          mapPoi: knownPoi,
         });
         return {
           headline: payload.headline,
@@ -358,6 +360,7 @@ export default function Home() {
           rotation: payload.rotation,
           startOffsetSec: chunk.startSec,
           endOffsetSec: chunk.endSec,
+          mapPoi: payload.mapPoi,
         } satisfies CoachChunkReport;
       };
 

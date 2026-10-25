@@ -34,6 +34,8 @@ test("prompts and cheap chrome switch with language", () => {
   assert.match(languageInstruction("ja"), /段差/);
   assert.match(languageInstruction("ja"), /確殺/);
   assert.match(languageInstruction("en"), /knock is not a kill/i);
-  assert.match(languageInstruction("ja"), /見えていなくても提案/);
-  assert.match(languageInstruction("en"), /off-screen cover/i);
+  assert.match(languageInstruction("ja"), /勝率が上がるときだけ/);
+  assert.match(languageInstruction("en"), /raises win rate/i);
+  assert.match(languageInstruction("ja"), /間取りを作るな/);
+  assert.match(languageInstruction("en"), /do not invent a layout/i);
 });

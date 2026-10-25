@@ -59,6 +59,7 @@ export function LiveSession({
   const blackStreak = useRef(0);
   const recentPrints = useRef<string[]>([]);
   const recentLabels = useRef<string[]>([]);
+  const mapPoiRef = useRef<{ map: string; poi: string } | undefined>(undefined);
   const readOnceRef = useRef<() => Promise<void>>(async () => undefined);
   const configRef = useRef({ game, rank, character, concern, language });
   const captureOk = useSyncExternalStore(() => () => undefined, canCaptureDisplay, () => false);
@@ -91,6 +92,7 @@ export function LiveSession({
     setWatching(false);
     recentPrints.current = [];
     recentLabels.current = [];
+    mapPoiRef.current = undefined;
     if (!captureOk) {
       setError("このブラウザでは画面共有が使えません。PCの Chrome または Edge で開いてください。スマホではライブコーチは使えません。");
       setStatus("error");
@@ -203,10 +205,14 @@ export function LiveSession({
           mode: "live",
           language: input.language,
           recentCues: recentLabels.current,
+          mapPoi: mapPoiRef.current,
         },
         { signal: run.signal },
       );
       if (!cancelled.current) {
+        if (payload.mapPoi?.map && payload.mapPoi.poi) {
+          mapPoiRef.current = payload.mapPoi;
+        }
         const decision = decideLiveCue(payload, recentPrints.current);
         if (decision.speak && decision.spokenLine) {
           recentPrints.current = rememberCues(recentPrints.current, payload.insights, decision.spokenLine);
