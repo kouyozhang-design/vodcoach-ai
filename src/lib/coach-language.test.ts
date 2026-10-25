@@ -6,6 +6,7 @@ import {
   languageInstruction,
   liveChrome,
   parseCoachLanguage,
+  shareChrome,
   speechLocale,
 } from "./coach-language.ts";
 
@@ -25,6 +26,8 @@ test("prompts and cheap chrome switch with language", () => {
   assert.equal(insightTabLabel("rotation", "en"), "Pathing / rotate");
   assert.equal(liveChrome("ja").speakingNow, "いま話しています");
   assert.equal(liveChrome("en").speakingNow, "Speaking now");
+  assert.equal(shareChrome("ja").label, "X（旧Twitter）にシェアする");
+  assert.equal(shareChrome("en").label, "Share on X (Twitter)");
   assert.equal(fightChrome("ja").sightlines, "細かい斜線管理");
   assert.equal(fightChrome("ja").knowHow, "戦闘のノウハウ");
   assert.equal(fightChrome("en").sightlines, "Fine sightline work");

@@ -10,6 +10,7 @@ import {
 import { FightExpanders } from "@/components/fight-expanders";
 import { InsightBoard } from "@/components/insight-board";
 import { LiveSession } from "@/components/live-session";
+import { ShareTweetButton } from "@/components/share-tweet-button";
 import {
   DEFAULT_COACH_LANGUAGE,
   readStoredLanguage,
@@ -725,6 +726,9 @@ export default function Home() {
                     videoUrl={uploadedVideoUrl}
                     frames={analysisFrames}
                   />
+                  <div className="mt-6 flex justify-end border-t border-white/[0.06] pt-5">
+                    <ShareTweetButton result={result} language={language} />
+                  </div>
                 </div>
               </div>
             )}

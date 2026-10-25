@@ -117,3 +117,16 @@ export function liveChrome(language: CoachLanguage) {
     onlyPostFight: "膠着の詰めと、戦闘後のレビューだけ話します。",
   };
 }
+
+export function shareChrome(language: CoachLanguage) {
+  if (language === "en") {
+    return {
+      label: "Share on X (Twitter)",
+      hint: "Opens X with a short summary of this advice.",
+    };
+  }
+  return {
+    label: "X（旧Twitter）にシェアする",
+    hint: "この指摘の短い要約をXの投稿画面に入れます。",
+  };
+}
