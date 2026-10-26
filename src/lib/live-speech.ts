@@ -108,11 +108,41 @@ export function pickEnglishVoice(voices: Array<Pick<SpeechSynthesisVoice, "lang"
   );
 }
 
+function voiceLang(lang: string) {
+  return lang.toLowerCase().replace(/_/g, "-");
+}
+
+/** Exact locale, then the same language, then Traditional Chinese before Simplified. */
 export function pickVoiceForLanguage(
   voices: Array<Pick<SpeechSynthesisVoice, "lang" | "name">>,
   language: CoachLanguage,
 ) {
-  return language === "en" ? pickEnglishVoice(voices) : pickJapaneseVoice(voices);
+  if (language === "en") return pickEnglishVoice(voices);
+  if (language === "ja") return pickJapaneseVoice(voices);
+  const wanted = voiceLang(speechLocale(language));
+  const prefix = language === "zh-TW" ? "zh" : wanted.slice(0, 2);
+  const ranked = voices
+    .map((voice) => ({ voice, score: scoreVoice(voice, language, wanted, prefix) }))
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score);
+  return ranked[0]?.voice ?? null;
+}
+
+function scoreVoice(
+  voice: Pick<SpeechSynthesisVoice, "lang" | "name">,
+  language: CoachLanguage,
+  wanted: string,
+  prefix: string,
+) {
+  const lang = voiceLang(voice.lang);
+  let score = 0;
+  if (lang === wanted) score += 100;
+  else if (lang.startsWith(`${wanted}-`)) score += 90;
+  else if (language === "zh-TW" && (lang.includes("hant") || lang.startsWith("zh-tw"))) score += 80;
+  else if (lang.startsWith(prefix)) score += language === "zh-TW" && lang.startsWith("zh-cn") ? 10 : 50;
+  if (score === 0) return 0;
+  if (/google|siri|premium|natural/i.test(voice.name)) score += 5;
+  return score;
 }
 
 /** Browsers block TTS until a click/tap. Call this in the same gesture as 画面共有. */
@@ -121,7 +151,7 @@ export function unlockSpeech(language: CoachLanguage = "ja") {
   if (!api || typeof SpeechSynthesisUtterance === "undefined") return false;
   try {
     api.cancel();
-    const warm = new SpeechSynthesisUtterance(language === "en" ? "." : "。");
+    const warm = new SpeechSynthesisUtterance(language === "ja" ? "。" : ".");
     warm.lang = speechLocale(language);
     warm.volume = 0.01;
     warm.rate = 2;

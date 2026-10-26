@@ -1,4 +1,5 @@
 import { resolveCoachLanguage } from "../coach-language.ts";
+import { liveSpokenLine } from "./live-spoken.ts";
 import { looksLikeSurveyBeacon } from "../live-speech.ts";
 import { formatTimestamp, shiftTimestamp } from "../match-plan.ts";
 import { resolveApexLocation, serializeApexPoi } from "./apex-poi.ts";
@@ -390,7 +391,8 @@ function ensureHigherEvClose(input: CoachRequest, insights: CoachInsight[]): Coa
 
 function buildLiveResponse(input: CoachRequest): CoachResponse {
   const isApex = input.game === "apex-legends";
-  const english = resolveCoachLanguage(input) === "en";
+  const language = resolveCoachLanguage(input);
+  const english = language === "en";
   const black = (input.frames?.length ?? 0) === 0;
   const concern = input.concern.trim() || `${input.rank}の${input.character}の今の判断`;
   if (black) {
@@ -418,9 +420,14 @@ function buildLiveResponse(input: CoachRequest): CoachResponse {
       speakMoment: "post-fight",
       usedScan: true,
       nextMove: "third-party",
-      spokenLine: english
-        ? `${input.rank} ${input.character}, scan shows two squads west. Ring 4, 40 seconds left. Third-party now. Do not dive the front fight.`
-        : `${input.rank}の${input.character}、スキャンで西に2隊。第4リング残り40秒。今は漁夫。正面の撃ち合いに飛び込むな。`,
+      spokenLine: liveSpokenLine(
+        language,
+        "scan",
+        input.rank,
+        input.character,
+        `${input.rank}の${input.character}、スキャンで西に2隊。第4リング残り40秒。今は漁夫。正面の撃ち合いに飛び込むな。`,
+        `${input.rank} ${input.character}, scan shows two squads west. Ring 4, 40 seconds left. Third-party now. Do not dive the front fight.`,
+      ),
       headline: english ? `${input.character} live · ${input.rank}` : `${input.character} ライブ · ${input.rank}`,
       summary: english
         ? `${input.rank} ${input.character}. Next move uses the survey-beacon scan, zone, and time. Focus: ${concern}.`
@@ -461,13 +468,18 @@ function buildLiveResponse(input: CoachRequest): CoachResponse {
     speakMoment: isApex ? "mid-range" : "standoff",
     usedScan: false,
     nextMove: "disengage",
-    spokenLine: english
-      ? isApex
-        ? `${input.rank} ${input.character}, two sightlines at mid-range. Space inside the ring. Cut and go to the rock. Pushing is third-party bait.`
-        : `${input.rank} ${input.character}, you swung with heaven still open. Back to the wall. Close only after one angle.`
-      : isApex
+    spokenLine: liveSpokenLine(
+      language,
+      isApex ? "apex" : "valorant",
+      input.rank,
+      input.character,
+      isApex
         ? `${input.rank}の${input.character}、中距離で2射線開いてる。アンチ内にスペースある。今は切って岩へ。押しは漁夫の的。`
         : `${input.rank}の${input.character}、heaven残したままスイングしてる。今は壁へ戻れ。詰めはアングル1本にしてから。`,
+      isApex
+        ? `${input.rank} ${input.character}, two sightlines at mid-range. Space inside the ring. Cut and go to the rock. Pushing is third-party bait.`
+        : `${input.rank} ${input.character}, you swung with heaven still open. Back to the wall. Close only after one angle.`,
+    ),
     headline: english ? `${input.character} live · ${input.rank}` : `${input.character} ライブ · ${input.rank}`,
     summary: english
       ? isApex

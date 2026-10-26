@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { InsightCard } from "@/components/insight-card";
-import { insightTabLabel, type CoachLanguage } from "@/lib/coach-language";
+import { insightAllLabel, insightTabLabel, insightTypesLabel, type CoachLanguage } from "@/lib/coach-language";
 import {
   groupInsightsByTab,
   shouldShowInsightTabs,
@@ -34,12 +34,12 @@ export function InsightBoard({
       {showTabs && (
         <div
           role="tablist"
-          aria-label={language === "en" ? "Insight types" : "指摘の種類"}
+          aria-label={insightTypesLabel(language)}
           className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           <TabPill
             id="all"
-            label={language === "en" ? "All" : "すべて"}
+            label={insightAllLabel(language)}
             count={insights.length}
             selected={active === "all"}
             onSelect={() => setTab("all")}

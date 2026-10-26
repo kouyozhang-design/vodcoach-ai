@@ -32,6 +32,19 @@ test("English TTS picks an English voice", () => {
   assert.equal(pickVoiceForLanguage(voices, "ja")?.name, "Kyoko");
 });
 
+test("other languages prefer an exact voice and fall back to the same language", () => {
+  const voices = [
+    { lang: "en-US", name: "Samantha" },
+    { lang: "zh-CN", name: "Ting" },
+    { lang: "zh-TW", name: "Meijia" },
+    { lang: "ko-KR", name: "Yuna" },
+  ];
+  assert.equal(pickVoiceForLanguage(voices, "zh-TW")?.name, "Meijia");
+  assert.equal(pickVoiceForLanguage(voices, "ko")?.name, "Yuna");
+  assert.equal(pickVoiceForLanguage([{ lang: "zh-CN", name: "Ting" }], "zh-TW")?.name, "Ting");
+  assert.equal(pickVoiceForLanguage([{ lang: "en-US", name: "Samantha" }], "pl"), null);
+});
+
 test("mid-fight lecture is rejected, short spray call is kept", () => {
   assert.equal(isMidFightLecture("mid-fight", "岩へ戻れ。"), false);
   assert.equal(

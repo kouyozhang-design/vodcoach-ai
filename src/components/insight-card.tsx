@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Crosshair, Flag, Map, ScanLine, Zap } from "lucide-react";
-import { insightTabLabel, type CoachLanguage } from "@/lib/coach-language";
+import { coachActionLabel, insightTabLabel, type CoachLanguage } from "@/lib/coach-language";
 import { resolveInsightTab } from "@/lib/coach/insight-tabs";
 import type { CoachInsight, InsightTabId } from "@/lib/coach/types";
 
@@ -77,7 +77,7 @@ export function InsightCard({
         <Typewriter text={insight.finding} delay={120 + index * 180} instant={instant} />
       </p>
       <div className="mt-3 border-t border-white/[0.05] pt-3">
-        <p className="text-[9px] font-semibold uppercase tracking-wider text-red-400">Coach action</p>
+        <p className="text-[9px] font-semibold uppercase tracking-wider text-red-400">{coachActionLabel(language)}</p>
         <p className="mt-1 text-[10px] leading-4 text-zinc-400">
           <Typewriter text={insight.action} delay={320 + index * 180} instant={instant} />
         </p>

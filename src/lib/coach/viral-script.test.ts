@@ -51,6 +51,9 @@ test("parseViralScript omits a callout the fields do not support and clamps the 
   assert.equal(script?.cta_text, defaultCta("ja"));
   assert.ok(charLength(defaultCta("ja")) <= CTA_MAX_CHARS);
   assert.ok(charLength(defaultCta("en")) <= CTA_MAX_CHARS);
+  for (const language of ["pt", "ko", "de", "fr", "es", "pl", "zh-TW", "tr", "it", "id"] as const) {
+    assert.ok(charLength(defaultCta(language)) <= CTA_MAX_CHARS, language);
+  }
   assert.ok(charLength("あ".repeat(TITLE_MAX_CHARS + 5)) > TITLE_MAX_CHARS);
 });
 

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { parseCoachLanguage } from "@/lib/coach-language";
+import { parseCoachLanguage, type CoachLanguage } from "@/lib/coach-language";
 import { parseApexPoiRef, serializeApexPoi } from "@/lib/coach/apex-poi";
 import { parseCloseRangeFights } from "@/lib/coach/fight-detail";
 import { parseInsightTab } from "@/lib/coach/insight-tabs";
@@ -38,7 +38,7 @@ type ParsedCoachBody = {
   segmentOnly?: boolean;
   chunkReports?: CoachChunkReport[];
   recentCues?: string[];
-  language?: "ja" | "en";
+  language?: CoachLanguage;
   mapPoi?: { map: string; poi: string };
 };
 

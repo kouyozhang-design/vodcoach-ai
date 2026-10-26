@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  COACH_LANGUAGES,
+  LANGUAGE_LABELS,
   fightChrome,
   insightTabLabel,
   languageInstruction,
@@ -8,6 +10,7 @@ import {
   parseCoachLanguage,
   shareChrome,
   speechLocale,
+  spokenLanguageLine,
   viralChrome,
 } from "./coach-language.ts";
 
@@ -44,4 +47,33 @@ test("prompts and cheap chrome switch with language", () => {
   assert.match(languageInstruction("en"), /raises win rate/i);
   assert.match(languageInstruction("ja"), /間取りを作るな/);
   assert.match(languageInstruction("en"), /do not invent a layout/i);
+});
+
+test("twelve languages use native picker labels and a speech locale", () => {
+  assert.deepEqual(COACH_LANGUAGES, ["en", "ja", "pt", "ko", "de", "fr", "es", "pl", "zh-TW", "tr", "it", "id"]);
+  assert.equal(LANGUAGE_LABELS.ja, "日本語");
+  assert.equal(LANGUAGE_LABELS.pt, "Português");
+  assert.equal(LANGUAGE_LABELS.ko, "한국어");
+  assert.equal(LANGUAGE_LABELS["zh-TW"], "繁體中文");
+  assert.equal(LANGUAGE_LABELS.id, "Bahasa Indonesia");
+  assert.equal(parseCoachLanguage("한국어"), "ko");
+  assert.equal(parseCoachLanguage("zh-tw"), "zh-TW");
+  assert.equal(parseCoachLanguage("Bahasa Indonesia"), "id");
+  assert.equal(parseCoachLanguage("nope"), "ja");
+  assert.equal(speechLocale("pt"), "pt-BR");
+  assert.equal(speechLocale("ko"), "ko-KR");
+  assert.equal(speechLocale("zh-TW"), "zh-TW");
+  assert.equal(speechLocale("id"), "id-ID");
+  assert.match(languageInstruction("ko"), /한국어/);
+  assert.match(spokenLanguageLine("ko"), /한국어/);
+  assert.match(spokenLanguageLine("ko"), /ko-KR/);
+  assert.match(spokenLanguageLine("ja"), /日本語/);
+  assert.match(spokenLanguageLine("en"), /English/);
+  for (const language of COACH_LANGUAGES) {
+    assert.ok(fightChrome(language).heading);
+    assert.ok(liveChrome(language).speakingNow);
+    assert.ok(viralChrome(language).heading);
+    assert.ok(shareChrome(language).label);
+    assert.ok(insightTabLabel("rotation", language));
+  }
 });

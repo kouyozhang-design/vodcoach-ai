@@ -1,4 +1,10 @@
-import { languageInstruction, resolveCoachLanguage, type CoachLanguage } from "../coach-language.ts";
+import {
+  languageInstruction,
+  resolveCoachLanguage,
+  spokenLanguageLine,
+  viralLanguageLine,
+  type CoachLanguage,
+} from "../coach-language.ts";
 import { formatTimestamp } from "../match-plan.ts";
 import { apexMapContext } from "./apex-poi.ts";
 import { COACHING_BAR, FIGHT_EXPLAIN } from "./bar.ts";
@@ -17,10 +23,7 @@ export function playerContext(input: Pick<CoachRequest, "game" | "rank" | "chara
 const VIRAL_JSON = `"viralScript":{"video_title":string,"ai_tsukkomi":string,"cta_text":string}`;
 
 function viralScriptLines(language: CoachLanguage) {
-  const voice =
-    language === "en"
-      ? "Write video_title, ai_tsukkomi, and cta_text in English. ai_tsukkomi is at most 100 characters. video_title is short enough to fill the screen in the first 2 seconds. cta_text is one line."
-      : "viralScript の3文字列は日本語。ai_tsukkomi は100文字以内。video_title は最初の2秒で画面いっぱいに出る短さ。cta_text は1行。";
+  const voice = viralLanguageLine(language);
   return `Apexのときだけ viralScript を埋める。VALORANTは video_title も ai_tsukkomi も cta_text も空文字。
 video_title: 最初の2秒で画面に巨大表示するタイトル。この解析の実在する瞬間から。ゲーマーが自分事になるか熱くなる一言。汎用スローガン禁止。
 ai_tsukkomi: 実際に起きているミスを、冷たく一行で突く。リロードのタイミング、離脱の遅れ、スキルの無駄、など、渡された映像または悩み文が支えているものだけ。辛口。具体。講義するな。支えないミスは書くな。根拠がなければ3つとも空文字。
@@ -44,6 +47,7 @@ export function systemPrompt(mode: CoachMode, language = resolveCoachLanguage({}
     return `${COACHING_BAR}
 あなたはFPSのライブ音声コーチです。指定JSONだけを返します。プレイヤーは試合中で、タブも通知も見ません。製品は声です。
 ${langLine}
+${spokenLanguageLine(language)}
 spokenLine は Web Speech が読む本文。短文。句点で切る。1〜3文。辛口で面白い。プロチームの過程と期待値。その選手のゲーム／ランク／キャラ／悩みと画面根拠を刺す。汎用スローガン禁止。
 shouldSpeak を true にしていいのは次だけ。
 1) post-fight: スクラップが終わった直後のレビュー。何が見えていて、次の1手がなぜ期待値か。
@@ -135,11 +139,7 @@ export function buildUserText(input: CoachRequest, mode: CoachMode, hasVideo: bo
     lines.push("武器名はHUDかモデルが読めたときだけ。段差と階段を取り違えるな。Apexのノックはキルではない。");
     lines.push("画面外カバーは、今の局面で勝率が上がるときだけ言え。画面に無いから黙るな。ApexでPOIが特定できたらスライスを事実に。未特定なら間取りを作るな。");
     lines.push("調査ビーコンやreconをファイト前に使っていたら、スキャンの敵位置とアンチと残り時間を spokenLine に入れて次の一手を言え。");
-    lines.push(
-      language === "en"
-        ? "When shouldSpeak=true, write spokenLine as short, sharp English. No tabs. No overlay."
-        : "shouldSpeak=true のとき spokenLine に、辛口で短い日本語を書く。タブも通知も出さない。ゲーム内オーバーレイは使いません。",
-    );
+    lines.push(spokenLanguageLine(language));
     if (hasFrames) lines.push(`静止画 ${input.frames?.length ?? 0} 枚を添付しています。`);
     const recent = input.recentCues?.map((cue) => cue.trim()).filter(Boolean) ?? [];
     if (recent.length > 0) {

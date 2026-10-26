@@ -3,12 +3,14 @@
 import { FormEvent, Suspense, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { authCopy } from "@/lib/billing/copy";
+import { LanguagePicker } from "@/components/language-picker";
+import { uiCopy } from "@/lib/ui-copy";
 import { useCoachLanguage } from "@/lib/use-coach-language";
+import { writeStoredLanguage } from "@/lib/coach-language";
 
 function AuthForm() {
   const language = useCoachLanguage();
-  const copy = authCopy(language);
+  const copy = uiCopy(language);
   const callbackError = useSearchParams().get("error") === "callback";
   const [email, setEmail] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
@@ -25,20 +27,20 @@ function AuthForm() {
         body: JSON.stringify({ email }),
       });
       if (response.status === 503) {
-        setNotice(copy.missing);
+        setNotice(copy.authMissing);
         return;
       }
       if (response.status === 400) {
-        setNotice(copy.invalid);
+        setNotice(copy.authInvalid);
         return;
       }
       if (!response.ok) {
-        setNotice(copy.failed);
+        setNotice(copy.authFailed);
         return;
       }
-      setNotice(copy.sent);
+      setNotice(copy.authSent);
     } catch {
-      setNotice(copy.failed);
+      setNotice(copy.authFailed);
     } finally {
       setPending(false);
     }
@@ -49,11 +51,21 @@ function AuthForm() {
       <p className="text-[15px] font-bold tracking-[-0.03em]">
         VODCoach<span className="text-red-500">.AI</span>
       </p>
-      <h1 className="mt-6 text-3xl font-semibold tracking-[-0.04em]">{copy.title}</h1>
-      <p className="mt-3 text-sm leading-6 text-zinc-400">{copy.body}</p>
+      <div className="mt-6 flex items-center justify-between gap-3">
+        <h1 className="text-3xl font-semibold tracking-[-0.04em]">{copy.authTitle}</h1>
+        <LanguagePicker
+          language={language}
+          label={copy.languageLabel}
+          onChange={(next) => {
+            writeStoredLanguage(next);
+            window.dispatchEvent(new Event("vodcoach-language"));
+          }}
+        />
+      </div>
+      <p className="mt-3 text-sm leading-6 text-zinc-400">{copy.authBody}</p>
       <form onSubmit={onSubmit} className="mt-6 space-y-3">
         <label className="block space-y-2">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.13em] text-zinc-500">{copy.email}</span>
+          <span className="text-[11px] font-semibold uppercase tracking-[0.13em] text-zinc-500">{copy.authEmail}</span>
           <input
             type="email"
             required
@@ -68,17 +80,17 @@ function AuthForm() {
           disabled={pending}
           className="h-11 w-full rounded-xl bg-red-600 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-60"
         >
-          {pending ? copy.sending : copy.submit}
+          {pending ? copy.authSending : copy.authSubmit}
         </button>
       </form>
-      {callbackError ? <p className="mt-4 text-sm text-amber-200/90">{copy.callback}</p> : null}
+      {callbackError ? <p className="mt-4 text-sm text-amber-200/90">{copy.authCallback}</p> : null}
       {notice ? (
         <p className="mt-4 text-sm text-zinc-300" role="status">
           {notice}
         </p>
       ) : null}
       <Link href="/" className="mt-8 text-sm text-zinc-500 hover:text-white">
-        {copy.back}
+        {copy.authBack}
       </Link>
     </main>
   );

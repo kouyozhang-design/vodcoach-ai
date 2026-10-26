@@ -17,10 +17,24 @@ export function clampChars(value: string, max: number) {
   return [...value.trim()].slice(0, max).join("");
 }
 
+const CTA_BY_LANGUAGE: Record<CoachLanguage, (host: string) => string> = {
+  ja: (host) => `自分のVODもVODCoach.AIで刺せ → ${host}`,
+  en: (host) => `Roast your VOD on VODCoach.AI → ${host}`,
+  pt: (host) => `Assa seu VOD no VODCoach.AI → ${host}`,
+  ko: (host) => `네 VOD도 VODCoach.AI에서 찔러 봐 → ${host}`,
+  de: (host) => `Roast dein VOD auf VODCoach.AI → ${host}`,
+  fr: (host) => `Fais rôtir ton VOD sur VODCoach.AI → ${host}`,
+  es: (host) => `Asa tu VOD en VODCoach.AI → ${host}`,
+  pl: (host) => `Przypiekaj VOD na VODCoach.AI → ${host}`,
+  "zh-TW": (host) => `用 VODCoach.AI 刺自己的 VOD → ${host}`,
+  tr: (host) => `VOD’unu VODCoach.AI’de közle → ${host}`,
+  it: (host) => `Arrosto il VOD su VODCoach.AI → ${host}`,
+  id: (host) => `Panggang VOD-mu di VODCoach.AI → ${host}`,
+};
+
 export function defaultCta(language: CoachLanguage) {
   const host = SHARE_APP_URL.replace(/^https:\/\//, "");
-  if (language === "en") return `Roast your VOD on VODCoach.AI → ${host}`;
-  return `自分のVODもVODCoach.AIで刺せ → ${host}`;
+  return CTA_BY_LANGUAGE[language](host);
 }
 
 /** Apex only. Empty title or tsukkomi means the footage did not support a callout. */

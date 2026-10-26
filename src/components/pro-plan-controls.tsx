@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { billingCopy } from "@/lib/billing/copy";
+import { uiCopy } from "@/lib/ui-copy";
 import { isStripeRedirect } from "@/lib/billing/redirect";
 import {
   normalizeBillingClientState,
@@ -25,8 +25,23 @@ async function readStatus(): Promise<PublicBillingState> {
   return normalizeBillingClientState(body);
 }
 
+function planLabels(language: CoachLanguage) {
+  const copy = uiCopy(language);
+  return {
+    becomePro: copy.becomePro,
+    manage: copy.managePlan,
+    notConfigured: copy.billingNotConfigured,
+    checkoutFailed: copy.checkoutFailed,
+    portalFailed: copy.portalFailed,
+    noAccount: copy.noAccount,
+    returned: copy.checkoutReturned,
+    canceled: copy.checkoutCanceled,
+    working: copy.billingWorking,
+  };
+}
+
 function ProButtonFallback({ language }: { language: CoachLanguage }) {
-  const copy = billingCopy(language);
+  const copy = planLabels(language);
   return (
     <button
       type="button"
@@ -39,7 +54,7 @@ function ProButtonFallback({ language }: { language: CoachLanguage }) {
 }
 
 function ProPlanControlsInner({ language }: { language: CoachLanguage }) {
-  const copy = billingCopy(language);
+  const copy = planLabels(language);
   const router = useRouter();
   const checkout = noticeForCheckoutQuery(useSearchParams().get("checkout"));
   const [state, setState] = useState<PublicBillingState>(signedOut);

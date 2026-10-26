@@ -201,3 +201,15 @@ test("live user text includes recent cues for dedupe", () => {
   assert.match(text, /アンチ/);
   assert.match(text, /ノックはキルではない/);
 });
+
+test("live prompt requests the selected spoken language", () => {
+  const prompt = systemPrompt("live", "ko");
+  assert.match(prompt, /한국어/);
+  assert.match(prompt, /spokenLine/);
+  assert.match(prompt, /ko-KR/);
+  const user = buildUserText({ ...sample, language: "ko", mode: "live" }, "live", false, true);
+  assert.match(user, /한국어/);
+  assert.match(user, /No tabs/);
+  const portuguese = systemPrompt("clip", "pt");
+  assert.match(portuguese, /Português/);
+});

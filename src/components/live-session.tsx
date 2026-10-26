@@ -7,7 +7,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { requestCoach } from "@/lib/coach/client";
+import { isAbortError, requestCoach } from "@/lib/coach/client";
+import { requestCoachTranslation } from "@/lib/coach/translate-client";
 import { decideLiveCue, recentCueLabels, rememberCues } from "@/lib/coach/live-cues";
 import type { CoachFrame } from "@/lib/coach/types";
 import {
@@ -21,11 +22,7 @@ import {
 import { liveChrome, type CoachLanguage } from "@/lib/coach-language";
 import { canUseSpeech, cancelSpeech, speakCoachLine, unlockSpeech } from "@/lib/live-speech";
 import type { GameId } from "@/lib/games";
-
-const ANTI_CHEAT_COPY =
-  "VALORANTのVanguardなど、チート対策が画面キャプチャをブロックすると真っ黒になるか、共有自体が失敗します。その環境ではライブコーチは動きません。";
-const WINDOWED_COPY =
-  "ゲームはフルスクリーン専有ではなく、ボーダーレスまたはウィンドウ表示にしてください。コーチングは声です。ゲーム画面の上には何も描きません。このタブを見なくても大丈夫です。";
+import { fillTemplate, localizeKnownError, uiCopy } from "@/lib/ui-copy";
 
 type LiveStatus = "idle" | "capturing" | "coaching" | "error";
 
@@ -44,7 +41,7 @@ export function LiveSession({
 }) {
   const [status, setStatus] = useState<LiveStatus>("idle");
   const [error, setError] = useState("");
-  const [warning, setWarning] = useState("");
+  const [warningCode, setWarningCode] = useState<"" | "black" | "speech">("");
   const [lastLine, setLastLine] = useState("");
   const [speaking, setSpeaking] = useState(false);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
@@ -61,11 +58,23 @@ export function LiveSession({
   const recentLabels = useRef<string[]>([]);
   const mapPoiRef = useRef<{ map: string; poi: string } | undefined>(undefined);
   const readOnceRef = useRef<() => Promise<void>>(async () => undefined);
+  const lastLineRef = useRef("");
+  const spokenLang = useRef(language);
   const configRef = useRef({ game, rank, character, concern, language });
   const captureOk = useSyncExternalStore(() => () => undefined, canCaptureDisplay, () => false);
   const speechOk = useSyncExternalStore(() => () => undefined, canUseSpeech, () => false);
   configRef.current = { game, rank, character, concern, language };
   const chrome = liveChrome(language);
+  const t = uiCopy(language);
+  const copyRef = useRef(t);
+  copyRef.current = t;
+  lastLineRef.current = lastLine;
+  const warning =
+    warningCode === "black"
+      ? fillTemplate(t.shareBlack, { anti: t.antiCheat })
+      : warningCode === "speech"
+        ? t.speechUnsupported
+        : "";
 
   useEffect(() => {
     return () => {
@@ -86,7 +95,7 @@ export function LiveSession({
 
   async function startSharing() {
     setError("");
-    setWarning("");
+    setWarningCode("");
     setLastLine("");
     setSpeaking(false);
     setWatching(false);
@@ -94,18 +103,14 @@ export function LiveSession({
     recentLabels.current = [];
     mapPoiRef.current = undefined;
     if (!captureOk) {
-      setError("このブラウザでは画面共有が使えません。PCの Chrome または Edge で開いてください。スマホではライブコーチは使えません。");
+      setError(copyRef.current.captureUnsupported);
       setStatus("error");
       return;
     }
     const unlocked = unlockSpeech(configRef.current.language);
     setAudioUnlocked(unlocked || canUseSpeech());
     if (!canUseSpeech()) {
-      setWarning(
-        language === "en"
-          ? "This browser cannot speak. Open Chrome or Edge for English TTS."
-          : "このブラウザは音声合成に対応していません。Chrome または Edge で開くと、日本語で話せます。",
-      );
+      setWarningCode("speech");
     }
     try {
       const stream = await startDisplayCapture();
@@ -121,7 +126,7 @@ export function LiveSession({
         stopStream();
         setStatus("idle");
         setSpeaking(false);
-        setError("画面共有が終了しました。続ける場合は、ゲームウィンドウをウィンドウ表示またはボーダーレスにして再共有してください。");
+        setError(copyRef.current.shareEnded);
       });
       setSharing(true);
       setStatus("capturing");
@@ -142,6 +147,7 @@ export function LiveSession({
   }
 
   function talk(line: string) {
+    spokenLang.current = configRef.current.language;
     setLastLine(line);
     if (!canUseSpeech()) {
       setSpeaking(false);
@@ -170,13 +176,11 @@ export function LiveSession({
     if (isCanvasMostlyBlack(video)) {
       blackStreak.current += 1;
       if (blackStreak.current >= 2) {
-        setWarning(
-          `共有画面がほぼ真っ黒です。${ANTI_CHEAT_COPY} ゲームをウィンドウ表示またはボーダーレスにし、このタブではなくゲーム側を選んでください。`,
-        );
+        setWarningCode("black");
       }
     } else {
       blackStreak.current = 0;
-      setWarning("");
+      setWarningCode("");
     }
 
     const first = grabJpegFrame(video);
@@ -200,7 +204,7 @@ export function LiveSession({
           game: input.game,
           rank: input.rank,
           character: input.character,
-          concern: input.concern.trim() || `${input.rank}の${input.character}として今の画面の次の動きを教えてください`,
+          concern: input.concern.trim() || fillTemplate(copyRef.current.liveConcern, { rank: input.rank, character: input.character }),
           frames,
           mode: "live",
           language: input.language,
@@ -227,7 +231,7 @@ export function LiveSession({
       }
     } catch (reason) {
       if (!cancelled.current) {
-        setError(reason instanceof Error ? reason.message : "ライブ解析に失敗しました。");
+        setError(reason instanceof Error ? reason.message : copyRef.current.liveFailed);
       }
     } finally {
       inFlight.current = false;
@@ -244,19 +248,64 @@ export function LiveSession({
     return () => window.clearInterval(timer);
   }, [sharing]);
 
+  useEffect(() => {
+    if (spokenLang.current === language) return;
+    const line = lastLineRef.current.trim();
+    if (!line) {
+      spokenLang.current = language;
+      return;
+    }
+    cancelSpeech();
+    setSpeaking(false);
+    const ac = new AbortController();
+    const from = spokenLang.current;
+    void requestCoachTranslation(
+      {
+        language,
+        sourceLanguage: from,
+        bundle: { headline: line, summary: line, spokenLine: line, insights: [] },
+      },
+      ac.signal,
+    )
+      .then((bundle) => {
+        if (ac.signal.aborted) return;
+        const next = (bundle.spokenLine || line).trim();
+        spokenLang.current = language;
+        if (next && next !== line) {
+          setLastLine(next);
+          const started = speakCoachLine(next, language, {
+            onstart: () => {
+              if (!cancelled.current) setSpeaking(true);
+            },
+            onend: () => {
+              if (!cancelled.current) setSpeaking(false);
+            },
+            onerror: () => {
+              if (!cancelled.current) setSpeaking(false);
+            },
+          });
+          if (!started) setSpeaking(false);
+        }
+      })
+      .catch((reason) => {
+        if (ac.signal.aborted || isAbortError(reason)) return;
+      });
+    return () => ac.abort();
+  }, [language]);
+
   return (
     <div className="grid gap-4 xl:grid-cols-[0.86fr_1.14fr]">
       <Card className="border-white/[0.08] bg-[#0e0e10]/95 p-0 text-white shadow-2xl shadow-black/40">
         <div className="p-4 sm:p-5">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold">PCライブ · 音声コーチ</p>
-              <p className="mt-1 text-[11px] text-zinc-600">デスクトップ向け。タブも通知も出しません。声だけです。</p>
+              <p className="text-sm font-semibold">{t.liveTitle}</p>
+              <p className="mt-1 text-[11px] text-zinc-600">{t.liveSubtitle}</p>
             </div>
             {sharing && (
               <Badge className="border border-red-500/20 bg-red-500/10 text-[10px] text-red-300">
                 <span className="mr-1.5 size-1.5 animate-pulse rounded-full bg-red-400" />
-                Sharing
+                {t.sharing}
               </Badge>
             )}
           </div>
@@ -269,28 +318,28 @@ export function LiveSession({
                 playsInline
                 autoPlay
                 className="size-full object-contain"
-                aria-label="画面共有プレビュー"
+                aria-label={t.sharePreviewAria}
               />
               {!sharing && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[#070708] px-6 text-center">
                   <Monitor className="size-8 text-red-400" />
-                  <p className="text-sm font-medium">ゲームのウィンドウまたは画面を共有</p>
-                  <p className="text-[11px] leading-5 text-zinc-600">このコーチング用タブではなく、プレイ中のゲームを選んでください。</p>
+                  <p className="text-sm font-medium">{t.sharePrompt}</p>
+                  <p className="text-[11px] leading-5 text-zinc-600">{t.sharePromptHint}</p>
                 </div>
               )}
             </div>
           </div>
 
           <div className="mt-4 space-y-2 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 text-[11px] leading-5 text-zinc-500">
-            <p>{WINDOWED_COPY}</p>
-            <p>{ANTI_CHEAT_COPY}</p>
+            <p>{t.windowed}</p>
+            <p>{t.antiCheat}</p>
             <p>{chrome.gesture}</p>
           </div>
 
           {error && (
             <div role="alert" className="mt-4 flex items-start gap-2 rounded-xl border border-red-500/20 bg-red-500/[0.08] p-3 text-xs leading-5 text-red-300">
               <AlertCircle className="mt-0.5 size-4 shrink-0" />
-              {error}
+              {localizeKnownError(error, language)}
             </div>
           )}
           {warning && !error && (
@@ -323,7 +372,7 @@ export function LiveSession({
           </div>
           <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[9px] text-zinc-700">
             <Shield className="size-3 shrink-0" />
-            画面は高頻度でJPEGとして送ります。話すのは戦闘後と膠着の詰めだけです。キーはブラウザに出しません。
+            {t.livePrivacy}
           </p>
         </div>
       </Card>
@@ -338,12 +387,12 @@ export function LiveSession({
               </div>
             </div>
             <p className="mt-6 text-base font-semibold">
-              {captureOk ? "試合中は声だけ聞いていればいい" : "この端末ではライブキャプチャに非対応です"}
+              {captureOk ? t.liveIdleTitle : t.liveUnsupportedTitle}
             </p>
             <p className="mt-2 max-w-sm text-xs leading-5 text-zinc-600">
               {captureOk
-                ? "戦闘が終わったあと、または膠着で詰めを考えるときだけ話します。種類タブも通知も出しません。音声を出すには、画面共有ボタンを押してください。"
-                : "PCの Chrome / Edge で開いてください。iPhone / iPad と多くのモバイルブラウザでは getDisplayMedia が使えません。"}
+                ? t.liveIdleBody
+                : t.liveUnsupportedBody}
             </p>
           </div>
         )}
@@ -367,8 +416,8 @@ export function LiveSession({
               </p>
             ) : null}
             <p className="mt-6 font-mono text-[9px] text-zinc-700">
-              {speaking ? "SPEAKING" : watching ? "WATCHING" : "LIVE"} · tick {tick}
-              {audioUnlocked && speechOk ? " · AUDIO" : ""}
+              {speaking ? t.liveMetaSpeaking : watching ? t.liveMetaWatching : t.liveMetaLive} · {tick}
+              {audioUnlocked && speechOk ? ` · ${t.liveMetaAudio}` : ""}
             </p>
           </div>
         )}
