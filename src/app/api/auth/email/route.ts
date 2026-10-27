@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { authReady, billingReturnOrigin, cleanEmail } from "@/lib/billing/config";
+import { oauthCallbackUrl } from "@/lib/oauth";
 import { createSupabaseServer } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -21,7 +22,7 @@ export async function POST(request: Request) {
 
   const { error } = await supabase.auth.signInWithOtp({
     email,
-    options: { emailRedirectTo: `${origin}/auth/callback` },
+    options: { emailRedirectTo: oauthCallbackUrl(origin) },
   });
   if (error) {
     console.error("supabase email sign-in failed");
