@@ -81,6 +81,12 @@ function AuthForm() {
             {copy.authApple}
           </button>
         </form>
+        <form method="post" action="/api/auth/oauth" className="col-span-2">
+          <input type="hidden" name="provider" value="discord" />
+          <button type="submit" className={providerButton}>
+            {copy.authDiscord}
+          </button>
+        </form>
       </div>
       <p className="mt-6 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.13em] text-zinc-500">
         <span className="h-px flex-1 bg-white/[0.08]" />

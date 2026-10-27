@@ -11,9 +11,10 @@ test("oauth returns to the existing auth callback", () => {
   assert.equal(oauthCallbackUrl(ORIGIN), CALLBACK);
 });
 
-test("only google and apple can start", () => {
+test("only google, apple, and discord can start", () => {
   assert.equal(oauthProviderFromForm("google"), "google");
   assert.equal(oauthProviderFromForm("apple"), "apple");
+  assert.equal(oauthProviderFromForm("discord"), "discord");
   assert.equal(oauthProviderFromForm("github"), null);
   assert.equal(oauthProviderFromForm("email"), null);
   assert.equal(oauthProviderFromForm(""), null);
@@ -31,6 +32,10 @@ test("authorize url stays on the supabase host and the existing callback", () =>
 
   const apple = `${SUPABASE}/auth/v1/authorize?provider=apple&redirect_to=${encodeURIComponent(CALLBACK)}`;
   assert.equal(new URL(supabaseAuthorizeUrl(apple, SUPABASE, CALLBACK, "apple") ?? "").searchParams.get("provider"), "apple");
+
+  const discord = `${SUPABASE}/auth/v1/authorize?provider=discord&redirect_to=${encodeURIComponent(CALLBACK)}`;
+  assert.equal(new URL(supabaseAuthorizeUrl(discord, SUPABASE, CALLBACK, "discord") ?? "").searchParams.get("provider"), "discord");
+  assert.equal(supabaseAuthorizeUrl(discord, SUPABASE, CALLBACK, "google"), null);
 
   assert.equal(
     supabaseAuthorizeUrl(
@@ -90,6 +95,7 @@ test("oauth reuses the email callback and does not exchange a session", () => {
   assert.equal(page.includes("signInWithOAuth"), false);
   assert.equal(page.includes('value="google"'), true);
   assert.equal(page.includes('value="apple"'), true);
+  assert.equal(page.includes('value="discord"'), true);
   assert.equal(page.includes("/api/auth/email"), true);
   assert.equal(page.includes("authMissing"), true);
 });

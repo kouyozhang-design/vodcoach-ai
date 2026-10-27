@@ -1,10 +1,10 @@
-export const OAUTH_PROVIDERS = ["google", "apple"] as const;
+export const OAUTH_PROVIDERS = ["google", "apple", "discord"] as const;
 
 export type OAuthProvider = (typeof OAUTH_PROVIDERS)[number];
 
 export function oauthProviderFromForm(value: unknown): OAuthProvider | null {
-  if (value === "google" || value === "apple") return value;
-  return null;
+  if (typeof value !== "string") return null;
+  return OAUTH_PROVIDERS.find((provider) => provider === value) ?? null;
 }
 
 /** Same path the email magic link already uses. */
