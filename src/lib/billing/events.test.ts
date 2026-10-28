@@ -228,6 +228,7 @@ test("browser billing code does not touch server secrets", () => {
     "src/components/pro-plan-controls.tsx",
     "src/app/auth/page.tsx",
     "src/app/page.tsx",
+    "src/components/home-screen.tsx",
     "src/lib/billing/events.ts",
     "src/lib/billing/redirect.ts",
     "src/lib/billing/ids.ts",

@@ -22,6 +22,10 @@ test("every visible string exists in all 12 languages", () => {
   assert.equal(uiCopy("en").becomePro, "Become Pro");
   assert.equal(uiCopy("ja").authTitle, "ログイン");
   assert.equal(uiCopy("en").authTitle, "Sign in");
+  assert.equal(uiCopy("ja").signOut, "ログアウト");
+  assert.equal(uiCopy("en").signOut, "Log out");
+  const signOut = new Set(COACH_LANGUAGES.map((language) => uiCopy(language).signOut));
+  assert.equal(signOut.size, COACH_LANGUAGES.length);
   assert.equal(uiCopy("ja").authGoogle, "Googleで続ける");
   assert.equal(uiCopy("ja").authDiscord, "Discordで続ける");
   assert.equal(uiCopy("en").authApple, "Continue with Apple");

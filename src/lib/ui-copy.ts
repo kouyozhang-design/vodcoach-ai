@@ -136,6 +136,7 @@ export type UiCopy = {
   authInvalid: string;
   authCallback: string;
   authBack: string;
+  signOut: string;
   becomePro: string;
   managePlan: string;
   billingNotConfigured: string;
@@ -280,6 +281,7 @@ const ja: UiCopy = {
   authInvalid: "メールアドレスを確認してください。",
   authCallback: "ログインを完了できませんでした。もう一度お試しください。",
   authBack: "アプリに戻る",
+  signOut: "ログアウト",
   becomePro: "Pro になる",
   managePlan: "プランを管理",
   billingNotConfigured: "決済はまだ設定されていません。請求は発生していません。",
@@ -424,6 +426,7 @@ const en: UiCopy = {
   authInvalid: "Check the email address.",
   authCallback: "Sign-in did not finish. Try again.",
   authBack: "Back to the app",
+  signOut: "Log out",
   becomePro: "Become Pro",
   managePlan: "Manage plan",
   billingNotConfigured: "Billing is not configured yet. No charge was made.",
@@ -575,6 +578,7 @@ const COPY: Record<CoachLanguage, UiCopy> = {
     authInvalid: "Confira o e-mail.",
     authCallback: "O login não terminou. Tente de novo.",
     authBack: "Voltar ao app",
+    signOut: "Sair",
     becomePro: "Virar Pro",
     managePlan: "Gerir plano",
     billingNotConfigured: "O pagamento ainda não está configurado. Nada foi cobrado.",
@@ -714,6 +718,7 @@ const COPY: Record<CoachLanguage, UiCopy> = {
     authInvalid: "이메일 주소를 확인하세요.",
     authCallback: "로그인을 끝내지 못했습니다. 다시 시도하세요.",
     authBack: "앱으로 돌아가기",
+    signOut: "로그아웃",
     becomePro: "Pro 되기",
     managePlan: "플랜 관리",
     billingNotConfigured: "결제가 아직 설정되지 않았습니다. 청구되지 않았습니다.",
@@ -857,6 +862,7 @@ const COPY: Record<CoachLanguage, UiCopy> = {
     authInvalid: "E-Mail prüfen.",
     authCallback: "Die Anmeldung ist nicht durchgelaufen. Nochmal versuchen.",
     authBack: "Zurück zur App",
+    signOut: "Abmelden",
     becomePro: "Pro werden",
     managePlan: "Plan verwalten",
     billingNotConfigured: "Zahlung ist noch nicht eingerichtet. Es wurde nichts berechnet.",
@@ -1000,6 +1006,7 @@ const COPY: Record<CoachLanguage, UiCopy> = {
     authInvalid: "Vérifie l’adresse e-mail.",
     authCallback: "La connexion ne s’est pas terminée. Réessaie.",
     authBack: "Retour à l’app",
+    signOut: "Se déconnecter",
     becomePro: "Devenir Pro",
     managePlan: "Gérer l’offre",
     billingNotConfigured: "Le paiement n’est pas encore configuré. Aucun débit.",
@@ -1143,6 +1150,7 @@ const COPY: Record<CoachLanguage, UiCopy> = {
     authInvalid: "Revisa el correo.",
     authCallback: "El acceso no terminó. Inténtalo otra vez.",
     authBack: "Volver a la app",
+    signOut: "Cerrar sesión",
     becomePro: "Hacerse Pro",
     managePlan: "Gestionar plan",
     billingNotConfigured: "El pago todavía no está configurado. No se cobró nada.",
@@ -1286,6 +1294,7 @@ const COPY: Record<CoachLanguage, UiCopy> = {
     authInvalid: "Sprawdź adres e-mail.",
     authCallback: "Logowanie się nie dokończyło. Spróbuj jeszcze raz.",
     authBack: "Wróć do aplikacji",
+    signOut: "Wyloguj się",
     becomePro: "Zostań Pro",
     managePlan: "Zarządzaj planem",
     billingNotConfigured: "Płatność nie jest jeszcze skonfigurowana. Nic nie pobrano.",
@@ -1424,6 +1433,7 @@ const COPY: Record<CoachLanguage, UiCopy> = {
     authInvalid: "請確認電子郵件。",
     authCallback: "登入沒有完成。請再試一次。",
     authBack: "回到應用程式",
+    signOut: "登出",
     becomePro: "成為 Pro",
     managePlan: "管理方案",
     billingNotConfigured: "付款尚未設定。沒有收費。",
@@ -1567,6 +1577,7 @@ const COPY: Record<CoachLanguage, UiCopy> = {
     authInvalid: "E-postayı kontrol et.",
     authCallback: "Giriş tamamlanmadı. Yeniden dene.",
     authBack: "Uygulamaya dön",
+    signOut: "Çıkış yap",
     becomePro: "Pro ol",
     managePlan: "Planı yönet",
     billingNotConfigured: "Ödeme henüz ayarlı değil. Ücret alınmadı.",
@@ -1710,6 +1721,7 @@ const COPY: Record<CoachLanguage, UiCopy> = {
     authInvalid: "Controlla l’email.",
     authCallback: "L’accesso non è finito. Riprova.",
     authBack: "Torna all’app",
+    signOut: "Esci",
     becomePro: "Diventa Pro",
     managePlan: "Gestisci piano",
     billingNotConfigured: "Il pagamento non è ancora configurato. Nessun addebito.",
@@ -1853,6 +1865,7 @@ const COPY: Record<CoachLanguage, UiCopy> = {
     authInvalid: "Periksa alamat email.",
     authCallback: "Masuk tidak selesai. Coba lagi.",
     authBack: "Kembali ke aplikasi",
+    signOut: "Keluar",
     becomePro: "Jadi Pro",
     managePlan: "Kelola paket",
     billingNotConfigured: "Pembayaran belum dikonfigurasi. Tidak ada tagihan.",

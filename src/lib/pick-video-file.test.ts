@@ -10,7 +10,7 @@ test("file accept includes image and video and does not set capture", () => {
 });
 
 test("the homepage file field is one static React input", () => {
-  const page = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const page = readFileSync(new URL("../components/home-screen.tsx", import.meta.url), "utf8");
   const picker = readFileSync(new URL("./pick-video-file.ts", import.meta.url), "utf8");
   assert.match(page, /<input[^>]*type="file"/);
   assert.equal(page.match(/type="file"/g)?.length, 1);
