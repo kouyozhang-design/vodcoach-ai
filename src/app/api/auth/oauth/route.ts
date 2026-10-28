@@ -1,7 +1,7 @@
 import { createServerClient, parseCookieHeader, type CookieOptions } from "@supabase/ssr";
 import { NextResponse } from "next/server";
 import { authReady, billingReturnOrigin, readBillingEnv } from "@/lib/billing/config";
-import { oauthCallbackUrl, oauthProviderFromForm, supabaseAuthorizeUrl } from "@/lib/oauth";
+import { oauthCallbackUrl, oauthProviderFromForm, supabaseAuthorizeUrl, supabaseProjectUrl } from "@/lib/oauth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,16 +21,22 @@ export async function POST(request: Request) {
   if (!origin) return authPage(request, origin, "callback");
 
   const billing = readBillingEnv();
+  const projectUrl = supabaseProjectUrl(billing.supabaseUrl);
+  if (!projectUrl) return authPage(request, origin, "callback");
 
   const pending: { name: string; value: string; options: CookieOptions }[] = [];
   let cacheHeaders: Record<string, string> = {};
-  const supabase = createServerClient(billing.supabaseUrl, billing.supabaseAnonKey, {
+  const supabase = createServerClient(projectUrl, billing.supabaseAnonKey, {
     cookies: {
       getAll() {
         return parseCookieHeader(request.headers.get("cookie") ?? "").filter((cookie) => cookie.name);
       },
       setAll(cookiesToSet, headers) {
-        pending.splice(0, pending.length, ...cookiesToSet);
+        for (const cookie of cookiesToSet) {
+          const at = pending.findIndex((item) => item.name === cookie.name);
+          if (at >= 0) pending[at] = cookie;
+          else pending.push(cookie);
+        }
         cacheHeaders = headers;
       },
     },
@@ -41,7 +47,7 @@ export async function POST(request: Request) {
     provider,
     options: { redirectTo, skipBrowserRedirect: true },
   });
-  const url = !error && data.url ? supabaseAuthorizeUrl(data.url, billing.supabaseUrl, redirectTo, provider) : null;
+  const url = !error && data.url ? supabaseAuthorizeUrl(data.url, projectUrl, redirectTo, provider) : null;
   const verifier = pending.some((cookie) => cookie.name.endsWith("-code-verifier"));
   if (!url || !verifier) {
     console.error("supabase oauth sign-in failed");

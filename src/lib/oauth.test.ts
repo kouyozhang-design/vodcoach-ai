@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { oauthCallbackUrl, oauthProviderFromForm, supabaseAuthorizeUrl } from "./oauth.ts";
+import { createServerClient } from "@supabase/ssr";
+import { oauthCallbackUrl, oauthProviderFromForm, supabaseAuthorizeUrl, supabaseProjectUrl } from "./oauth.ts";
 
 const ORIGIN = "https://vodcoach-ai.vercel.app";
 const CALLBACK = "https://vodcoach-ai.vercel.app/auth/callback";
@@ -71,6 +72,15 @@ test("authorize url stays on the supabase host and the existing callback", () =>
   assert.equal(supabaseAuthorizeUrl("javascript:alert(1)", SUPABASE, CALLBACK, "google"), null);
   assert.equal(
     supabaseAuthorizeUrl(
+      `${SUPABASE}/rest/v1/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(CALLBACK)}`,
+      SUPABASE,
+      CALLBACK,
+      "google",
+    ),
+    null,
+  );
+  assert.equal(
+    supabaseAuthorizeUrl(
       `https://user:pass@project.supabase.co/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(CALLBACK)}`,
       SUPABASE,
       CALLBACK,
@@ -80,6 +90,63 @@ test("authorize url stays on the supabase host and the existing callback", () =>
   );
 });
 
+test("a saved /rest/v1 url still authorizes only on the project origin", async () => {
+  const configured = `${SUPABASE}/rest/v1/`;
+  assert.equal(supabaseProjectUrl(configured), SUPABASE);
+  assert.equal(supabaseProjectUrl(`${SUPABASE}/rest/v1`), SUPABASE);
+  assert.equal(supabaseProjectUrl(`${SUPABASE}/auth/v1`), SUPABASE);
+  assert.equal(supabaseProjectUrl(`${SUPABASE}/`), SUPABASE);
+  assert.equal(supabaseProjectUrl(SUPABASE), SUPABASE);
+  assert.equal(supabaseProjectUrl(`${SUPABASE}/evil`), null);
+  assert.equal(supabaseProjectUrl(`${SUPABASE}/rest/v1/table`), null);
+  assert.equal(supabaseProjectUrl("https://user:pass@project.supabase.co/rest/v1/"), null);
+  assert.equal(supabaseProjectUrl("javascript:alert(1)"), null);
+
+  const redirectTo = CALLBACK;
+  const start = async (base: string, provider: "google" | "discord") => {
+    const pending: { name: string }[] = [];
+    const supabase = createServerClient(base, "sb_publishable_test_key_not_real", {
+      cookies: {
+        getAll() {
+          return [];
+        },
+        setAll(cookies) {
+          for (const cookie of cookies) {
+            const at = pending.findIndex((item) => item.name === cookie.name);
+            if (at >= 0) pending[at] = cookie;
+            else pending.push(cookie);
+          }
+        },
+      },
+    });
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: { redirectTo, skipBrowserRedirect: true },
+    });
+    return { data, error, pending };
+  };
+
+  for (const provider of ["google", "discord"] as const) {
+    const raw = await start(configured, provider);
+    assert.equal(raw.error, null);
+    assert.equal(supabaseAuthorizeUrl(raw.data.url ?? "", supabaseProjectUrl(configured) ?? "", redirectTo, provider), null);
+    assert.equal(new URL(raw.data.url ?? "").pathname, "/rest/v1/auth/v1/authorize");
+
+    const project = supabaseProjectUrl(configured);
+    assert.ok(project);
+    const fixed = await start(project, provider);
+    const accepted = supabaseAuthorizeUrl(fixed.data.url ?? "", project, redirectTo, provider);
+    assert.ok(accepted);
+    const target = new URL(accepted);
+    assert.equal(target.protocol, "https:");
+    assert.equal(target.host, "project.supabase.co");
+    assert.equal(target.pathname, "/auth/v1/authorize");
+    assert.equal(target.searchParams.get("provider"), provider);
+    assert.equal(target.searchParams.get("redirect_to"), CALLBACK);
+    assert.equal(fixed.pending.some((cookie) => cookie.name.endsWith("-code-verifier")), true);
+  }
+});
+
 test("oauth reuses the email callback and does not exchange a session", () => {
   const route = readFileSync("src/app/api/auth/oauth/route.ts", "utf8");
   const callback = readFileSync("src/app/auth/callback/route.ts", "utf8");
@@ -87,6 +154,15 @@ test("oauth reuses the email callback and does not exchange a session", () => {
   const page = readFileSync("src/app/auth/page.tsx", "utf8");
   assert.equal(route.includes("exchangeCodeForSession"), false);
   assert.equal(route.includes("signInWithOAuth"), true);
+  assert.equal(route.includes("supabaseProjectUrl"), true);
+  assert.equal(route.includes("supabaseAuthorizeUrl"), true);
+  assert.equal(route.includes('endsWith("-code-verifier")'), true);
+  assert.equal(route.includes("if (!url || !verifier)"), true);
+  const server = readFileSync("src/lib/supabase/server.ts", "utf8");
+  const session = readFileSync("src/lib/supabase/update-session.ts", "utf8");
+  assert.equal(server.includes("supabaseProjectUrl"), true);
+  assert.equal(session.includes("supabaseProjectUrl"), true);
+  assert.equal(server.includes("writeProfileStatus"), false);
   assert.equal(route.includes("writeProfileStatus"), false);
   assert.equal(route.includes("billingReturnOrigin"), true);
   assert.equal(callback.split("exchangeCodeForSession").length - 1, 1);

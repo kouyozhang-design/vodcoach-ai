@@ -1,14 +1,16 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { supabaseProjectUrl } from "@/lib/oauth";
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
   if (request.nextUrl.pathname.startsWith("/api/stripe/webhook")) return response;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
-  if (!url || !anon) return response;
+  const projectUrl = url ? supabaseProjectUrl(url) : null;
+  if (!projectUrl || !anon) return response;
 
-  const supabase = createServerClient(url, anon, {
+  const supabase = createServerClient(projectUrl, anon, {
     cookies: {
       getAll() {
         return request.cookies.getAll();

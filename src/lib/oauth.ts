@@ -13,6 +13,27 @@ export function oauthCallbackUrl(origin: string): string {
 }
 
 /**
+ * Project root the Auth client should use. A saved URL of
+ * `https://<project>.supabase.co/rest/v1` makes the client build
+ * `/rest/v1/auth/v1/authorize`, which is not the provider redirect.
+ * Only the origin, or a known Supabase API prefix, is accepted.
+ */
+const SUPABASE_API_PREFIX = /^\/(?:rest|auth|storage|functions|realtime)\/v1\/?$/;
+
+export function supabaseProjectUrl(supabaseUrl: string): string | null {
+  let base: URL;
+  try {
+    base = new URL(supabaseUrl);
+  } catch {
+    return null;
+  }
+  if (base.protocol !== "https:" && base.protocol !== "http:") return null;
+  if (base.username || base.password) return null;
+  if (base.pathname !== "/" && !SUPABASE_API_PREFIX.test(base.pathname)) return null;
+  return base.origin;
+}
+
+/**
  * Accept only the Supabase authorize URL for the requested provider.
  * redirect_to must be the existing callback. Anything else is refused.
  */
