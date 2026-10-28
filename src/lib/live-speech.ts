@@ -74,10 +74,103 @@ export function spokenLineForCue(response: Pick<CoachResponse, "spokenLine" | "i
 
 type SpeechSynth = {
   speaking: boolean;
+  pending?: boolean;
+  paused?: boolean;
   getVoices(): SpeechSynthesisVoice[];
   speak(utterance: SpeechSynthesisUtterance): void;
   cancel(): void;
+  pause?: () => void;
+  resume?: () => void;
+  addEventListener?: (type: "voiceschanged", listener: () => void) => void;
 };
+
+let cachedVoices: SpeechSynthesisVoice[] = [];
+let voicesHooked = false;
+let speakGeneration = 0;
+let keepAliveId: number | undefined;
+
+/** Chrome applies cancel() asynchronously and drops a speak() in that same turn. */
+export const SPEAK_AFTER_CANCEL_MS = 100;
+const START_WATCHDOG_MS = 1500;
+const KEEPALIVE_MS = 10_000;
+
+export type SpeechEngineState = {
+  speaking: boolean;
+  pending: boolean;
+  paused: boolean;
+};
+
+export type SpeechStep =
+  | { op: "resume" }
+  | { op: "cancel" }
+  | { op: "speak"; when: "now" | "later" };
+
+/** Screen-share unlock must speak inside the gesture. A busy engine speaks on the next turn. */
+export function planSpeech(state: SpeechEngineState, purpose: "unlock" | "line"): SpeechStep[] {
+  if (purpose === "unlock") {
+    const steps: SpeechStep[] = [];
+    if (state.paused) steps.push({ op: "resume" });
+    steps.push({ op: "speak", when: "now" });
+    return steps;
+  }
+  if (state.speaking || state.pending) {
+    return [{ op: "cancel" }, { op: "speak", when: "later" }];
+  }
+  if (state.paused) return [{ op: "resume" }, { op: "speak", when: "now" }];
+  return [{ op: "speak", when: "now" }];
+}
+
+/** Chrome stalls the engine after ~15s. Nudge only while a line is queued or the engine is paused. */
+export function planKeepAlive(state: { speaking: boolean; pending?: boolean; paused: boolean }): Array<"pause" | "resume"> {
+  if (state.speaking || state.pending) return ["pause", "resume"];
+  if (state.paused) return ["resume"];
+  return [];
+}
+
+export function runSpeechPlan(
+  api: { resume?: () => void; cancel: () => void },
+  steps: SpeechStep[],
+  speak: () => void,
+  later: (speak: () => void) => void,
+) {
+  for (const step of steps) {
+    if (step.op === "resume") {
+      try {
+        api.resume?.();
+      } catch {
+        /* ignore */
+      }
+    } else if (step.op === "cancel") {
+      api.cancel();
+    } else if (step.when === "now") {
+      speak();
+    } else {
+      later(speak);
+    }
+  }
+}
+
+/** Replacing a line cancels the previous utterance. That is not a failure once it had started. */
+export function speechErrorIgnored(code: string | undefined, started: boolean) {
+  if (!started) return false;
+  return code === "interrupted" || code === "canceled";
+}
+
+/** Same-turn cancel drops the new utterance before onstart. Retry it. */
+export function speechErrorDropped(code: string | undefined) {
+  return code === "interrupted" || code === "canceled";
+}
+
+/** A bad voice match should fall through to utterance.lang, not stay silent. */
+export function speechErrorRetriesWithoutVoice(code: string | undefined) {
+  return (
+    code === "voice-unavailable" ||
+    code === "language-unavailable" ||
+    code === "network" ||
+    code === "synthesis-failed" ||
+    code === "synthesis-unavailable"
+  );
+}
 
 function synth(): SpeechSynth | null {
   if (typeof window === "undefined") return null;
@@ -90,7 +183,7 @@ export function canUseSpeech() {
 }
 
 export function pickJapaneseVoice(voices: Array<Pick<SpeechSynthesisVoice, "lang" | "name">>) {
-  const ja = voices.filter((voice) => /^ja\b/i.test(voice.lang));
+  const ja = voices.filter((voice) => /^ja\b/i.test(voice.lang.replace(/_/g, "-")));
   return (
     ja.find((voice) => /google|kyoko|otoya|nanami|haruka|sayaka/i.test(voice.name)) ??
     ja[0] ??
@@ -99,10 +192,10 @@ export function pickJapaneseVoice(voices: Array<Pick<SpeechSynthesisVoice, "lang
 }
 
 export function pickEnglishVoice(voices: Array<Pick<SpeechSynthesisVoice, "lang" | "name">>) {
-  const en = voices.filter((voice) => /^en\b/i.test(voice.lang));
+  const en = voices.filter((voice) => /^en\b/i.test(voice.lang.replace(/_/g, "-")));
   return (
     en.find((voice) => /google|samantha|daniel|alex|siri|aria|jenny/i.test(voice.name)) ??
-    en.find((voice) => /^en-US\b/i.test(voice.lang)) ??
+    en.find((voice) => /^en-us\b/i.test(voice.lang.replace(/_/g, "-"))) ??
     en[0] ??
     null
   );
@@ -145,20 +238,114 @@ function scoreVoice(
   return score;
 }
 
+function engineOf(api: SpeechSynth): SpeechEngineState {
+  return {
+    speaking: Boolean(api.speaking),
+    pending: Boolean(api.pending),
+    paused: Boolean(api.paused),
+  };
+}
+
+function currentVoices(api: SpeechSynth) {
+  try {
+    const fresh = api.getVoices() ?? [];
+    if (fresh.length > 0) cachedVoices = fresh.slice();
+  } catch {
+    /* ignore */
+  }
+  return cachedVoices;
+}
+
+export function primeSpeechVoices() {
+  const api = synth();
+  if (!api) return;
+  currentVoices(api);
+  if (voicesHooked || typeof api.addEventListener !== "function") return;
+  voicesHooked = true;
+  try {
+    api.addEventListener("voiceschanged", () => {
+      currentVoices(api);
+    });
+  } catch {
+    voicesHooked = false;
+  }
+}
+
+function nudge(api: SpeechSynth) {
+  const steps = planKeepAlive({
+    speaking: Boolean(api.speaking),
+    pending: Boolean(api.pending),
+    paused: Boolean(api.paused),
+  });
+  for (const step of steps) {
+    try {
+      if (step === "pause") api.pause?.();
+      else api.resume?.();
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function ensureKeepAlive() {
+  if (typeof window === "undefined" || keepAliveId !== undefined) return;
+  keepAliveId = window.setInterval(() => {
+    const api = synth();
+    if (!api) return;
+    nudge(api);
+  }, KEEPALIVE_MS);
+}
+
+function stopKeepAlive() {
+  if (keepAliveId === undefined || typeof window === "undefined") return;
+  window.clearInterval(keepAliveId);
+  keepAliveId = undefined;
+}
+
+function resumeEngine(api: SpeechSynth) {
+  try {
+    api.resume?.();
+  } catch {
+    /* ignore */
+  }
+}
+
+function assignVoice(
+  utterance: SpeechSynthesisUtterance,
+  api: SpeechSynth,
+  language: CoachLanguage,
+  allowVoice: boolean,
+) {
+  utterance.lang = speechLocale(language);
+  if (!allowVoice) return;
+  const voice = pickVoiceForLanguage(currentVoices(api), language);
+  if (voice) utterance.voice = voice as SpeechSynthesisVoice;
+}
+
 /** Browsers block TTS until a click/tap. Call this in the same gesture as 画面共有. */
 export function unlockSpeech(language: CoachLanguage = "ja") {
   const api = synth();
   if (!api || typeof SpeechSynthesisUtterance === "undefined") return false;
+  speakGeneration += 1;
+  primeSpeechVoices();
   try {
-    api.cancel();
-    const warm = new SpeechSynthesisUtterance(language === "ja" ? "。" : ".");
-    warm.lang = speechLocale(language);
-    warm.volume = 0.01;
-    warm.rate = 2;
-    const voice = pickVoiceForLanguage(api.getVoices(), language);
-    if (voice) warm.voice = voice as SpeechSynthesisVoice;
-    api.speak(warm);
-    api.cancel();
+    const steps = planSpeech(engineOf(api), "unlock");
+    runSpeechPlan(
+      api,
+      steps,
+      () => {
+        const warm = new SpeechSynthesisUtterance(language === "ja" ? "あ" : "a");
+        warm.volume = 0.01;
+        warm.rate = 1;
+        assignVoice(warm, api, language, true);
+        resumeEngine(api);
+        api.speak(warm);
+      },
+      (speak) => {
+        speak();
+      },
+    );
+    ensureKeepAlive();
     return true;
   } catch {
     return false;
@@ -166,6 +353,8 @@ export function unlockSpeech(language: CoachLanguage = "ja") {
 }
 
 export function cancelSpeech() {
+  speakGeneration += 1;
+  stopKeepAlive();
   try {
     synth()?.cancel();
   } catch {
@@ -184,18 +373,69 @@ export function speakCoachLine(
     handlers.onerror?.();
     return false;
   }
-  try {
-    api.cancel();
+  const generation = ++speakGeneration;
+  primeSpeechVoices();
+  ensureKeepAlive();
+  let retried = false;
+  let failed = false;
+
+  const speakOnce = (allowVoice: boolean) => {
+    if (generation !== speakGeneration) return;
     const utterance = new SpeechSynthesisUtterance(line);
-    utterance.lang = speechLocale(language);
     utterance.rate = 1.08;
     utterance.pitch = 0.95;
-    const voice = pickVoiceForLanguage(api.getVoices(), language);
-    if (voice) utterance.voice = voice as SpeechSynthesisVoice;
-    utterance.onstart = () => handlers.onstart?.();
-    utterance.onend = () => handlers.onend?.();
-    utterance.onerror = () => handlers.onerror?.();
-    api.speak(utterance);
+    assignVoice(utterance, api, language, allowVoice);
+    let started = false;
+    utterance.onstart = () => {
+      started = true;
+      if (generation === speakGeneration) handlers.onstart?.();
+    };
+    utterance.onend = () => {
+      if (generation === speakGeneration) handlers.onend?.();
+    };
+    utterance.onerror = (event: SpeechSynthesisErrorEvent) => {
+      if (generation !== speakGeneration) return;
+      const code = event.error;
+      if (speechErrorIgnored(code, started)) return;
+      if (!started && speechErrorDropped(code)) return;
+      if (!retried && speechErrorRetriesWithoutVoice(code)) {
+        retried = true;
+        window.setTimeout(() => speakOnce(false), SPEAK_AFTER_CANCEL_MS);
+        return;
+      }
+      failed = true;
+      handlers.onerror?.();
+    };
+    try {
+      resumeEngine(api);
+      api.speak(utterance);
+    } catch {
+      failed = true;
+      handlers.onerror?.();
+      return;
+    }
+    window.setTimeout(() => {
+      if (generation !== speakGeneration || started || failed) return;
+      if (api.speaking || api.pending) {
+        nudge(api);
+        return;
+      }
+      if (retried) return;
+      retried = true;
+      window.setTimeout(() => speakOnce(allowVoice), SPEAK_AFTER_CANCEL_MS);
+    }, START_WATCHDOG_MS);
+  };
+
+  try {
+    const steps = planSpeech(engineOf(api), "line");
+    runSpeechPlan(
+      api,
+      steps,
+      () => speakOnce(true),
+      (speak) => {
+        window.setTimeout(speak, SPEAK_AFTER_CANCEL_MS);
+      },
+    );
     return true;
   } catch {
     handlers.onerror?.();

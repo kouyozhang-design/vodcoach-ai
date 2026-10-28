@@ -20,7 +20,7 @@ import {
   startDisplayCapture,
 } from "@/lib/live-capture";
 import { liveChrome, type CoachLanguage } from "@/lib/coach-language";
-import { canUseSpeech, cancelSpeech, speakCoachLine, unlockSpeech } from "@/lib/live-speech";
+import { canUseSpeech, cancelSpeech, primeSpeechVoices, speakCoachLine, unlockSpeech } from "@/lib/live-speech";
 import type { GameId } from "@/lib/games";
 import { fillTemplate, localizeKnownError, uiCopy } from "@/lib/ui-copy";
 
@@ -77,6 +77,7 @@ export function LiveSession({
         : "";
 
   useEffect(() => {
+    primeSpeechVoices();
     return () => {
       cancelled.current = true;
       coachAbort.current?.abort();

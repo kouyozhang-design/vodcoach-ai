@@ -10,6 +10,13 @@ import {
   pickEnglishVoice,
   pickJapaneseVoice,
   pickVoiceForLanguage,
+  planKeepAlive,
+  planSpeech,
+  runSpeechPlan,
+  SPEAK_AFTER_CANCEL_MS,
+  speechErrorDropped,
+  speechErrorIgnored,
+  speechErrorRetriesWithoutVoice,
   spokenLineForCue,
   spokenLineUsesScan,
 } from "./live-speech.ts";
@@ -20,6 +27,18 @@ test("pickJapaneseVoice prefers a ja voice", () => {
     { lang: "ja-JP", name: "Kyoko" },
   ]);
   assert.equal(picked?.name, "Kyoko");
+});
+
+test("voice lookup accepts underscore locales from the speech engine", () => {
+  assert.equal(
+    pickJapaneseVoice([
+      { lang: "en_US", name: "Samantha" },
+      { lang: "ja_JP", name: "Kyoko" },
+    ])?.name,
+    "Kyoko",
+  );
+  assert.equal(pickEnglishVoice([{ lang: "en_US", name: "Samantha" }])?.name, "Samantha");
+  assert.equal(pickVoiceForLanguage([{ lang: "pl_PL", name: "Zosia" }], "pl")?.name, "Zosia");
 });
 
 test("English TTS picks an English voice", () => {
@@ -90,4 +109,81 @@ test("survey beacon spoken line must use scan, zone, time, and a next move", () 
     spokenLineUsesScan("Scan shows two squads west. Ring 4, 40 seconds left. Third-party now."),
     true,
   );
+});
+
+const idle = { speaking: false, pending: false, paused: false };
+
+test("screen-share unlock speaks in the gesture and does not cancel", () => {
+  assert.deepEqual(planSpeech(idle, "unlock"), [{ op: "speak", when: "now" }]);
+  assert.deepEqual(planSpeech({ ...idle, paused: true }, "unlock"), [
+    { op: "resume" },
+    { op: "speak", when: "now" },
+  ]);
+  const ops: string[] = [];
+  runSpeechPlan(
+    {
+      cancel() {
+        ops.push("cancel");
+      },
+      resume() {
+        ops.push("resume");
+      },
+    },
+    planSpeech(idle, "unlock"),
+    () => ops.push("speak"),
+    (speak) => {
+      ops.push("later");
+      speak();
+    },
+  );
+  assert.deepEqual(ops, ["speak"]);
+});
+
+test("an idle engine speaks the cue immediately, a busy one waits until after cancel", () => {
+  assert.ok(SPEAK_AFTER_CANCEL_MS >= 50);
+  assert.deepEqual(planSpeech(idle, "line"), [{ op: "speak", when: "now" }]);
+  assert.deepEqual(planSpeech({ ...idle, paused: true }, "line"), [
+    { op: "resume" },
+    { op: "speak", when: "now" },
+  ]);
+  assert.deepEqual(planSpeech({ speaking: true, pending: false, paused: false }, "line"), [
+    { op: "cancel" },
+    { op: "speak", when: "later" },
+  ]);
+  const ops: string[] = [];
+  let deferred: (() => void) | undefined;
+  runSpeechPlan(
+    {
+      cancel() {
+        ops.push("cancel");
+      },
+    },
+    planSpeech({ speaking: false, pending: true, paused: false }, "line"),
+    () => ops.push("speak"),
+    (speak) => {
+      deferred = speak;
+    },
+  );
+  assert.deepEqual(ops, ["cancel"]);
+  deferred?.();
+  assert.deepEqual(ops, ["cancel", "speak"]);
+});
+
+test("Chrome keep-alive resumes a paused engine and nudges only while a line is queued", () => {
+  assert.deepEqual(planKeepAlive({ speaking: false, pending: false, paused: false }), []);
+  assert.deepEqual(planKeepAlive({ speaking: false, pending: false, paused: true }), ["resume"]);
+  assert.deepEqual(planKeepAlive({ speaking: true, paused: false }), ["pause", "resume"]);
+  assert.deepEqual(planKeepAlive({ speaking: false, pending: true, paused: false }), ["pause", "resume"]);
+});
+
+test("interrupted after start is ignored, a dropped line is retried, a bad voice falls back", () => {
+  assert.equal(speechErrorIgnored("interrupted", true), true);
+  assert.equal(speechErrorIgnored("canceled", true), true);
+  assert.equal(speechErrorIgnored("interrupted", false), false);
+  assert.equal(speechErrorIgnored("not-allowed", true), false);
+  assert.equal(speechErrorDropped("canceled"), true);
+  assert.equal(speechErrorDropped("not-allowed"), false);
+  assert.equal(speechErrorRetriesWithoutVoice("voice-unavailable"), true);
+  assert.equal(speechErrorRetriesWithoutVoice("network"), true);
+  assert.equal(speechErrorRetriesWithoutVoice("not-allowed"), false);
 });
