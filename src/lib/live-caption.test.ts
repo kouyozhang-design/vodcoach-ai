@@ -37,9 +37,13 @@ test("the caption css keeps the spoken line solid inside a thin frame", () => {
   const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
   const block = css.slice(css.indexOf(".live-caption {"), css.indexOf("@keyframes live-caption-in"));
   assert.match(block, /\.live-caption-text \{[^}]*opacity:\s*1/);
+  assert.match(block, /top:\s*50%/);
+  assert.match(block, /right:\s*0\.5rem/);
+  assert.match(block, /translateY\(-50%\)/);
   assert.match(block, /max-width:\s*40%/);
   assert.match(block, /border:\s*1px solid rgb\(255 255 255 \/ 0\.22\)/);
   assert.match(block, /background:\s*transparent/);
-  assert.doesNotMatch(block, /text-overflow:\s*ellipsis/);
-  assert.doesNotMatch(block, /white-space:\s*nowrap/);
+  assert.match(block, /white-space:\s*nowrap/);
+  assert.doesNotMatch(block, /left:\s*0\.5rem/);
+  assert.doesNotMatch(block, /bottom:\s*0\.5rem/);
 });

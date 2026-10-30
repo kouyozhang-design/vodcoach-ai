@@ -130,13 +130,14 @@
   }
 }
 
-/* One corner caption. Glyphs stay solid. Only the 1px frame is faint, with no fill. */
+/* One line on the right edge, vertically centered. Glyphs stay solid. Only the 1px frame is faint. */
 .live-caption {
   pointer-events: none;
   position: absolute;
   z-index: 2;
-  left: 0.5rem;
-  bottom: 0.5rem;
+  top: 50%;
+  right: 0.5rem;
+  transform: translateY(-50%);
   max-width: 40%;
 }
 .live-caption-in {
@@ -158,9 +159,9 @@
   font-size: 13px;
   font-weight: 500;
   line-height: 1.35;
-  white-space: normal;
-  overflow: visible;
-  overflow-wrap: break-word;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   text-shadow: 0 1px 2px rgb(0 0 0 / 0.95);
 }
 @keyframes live-caption-in {
