@@ -20,6 +20,7 @@ import {
   startDisplayCapture,
 } from "@/lib/live-capture";
 import { liveChrome, type CoachLanguage } from "@/lib/coach-language";
+import { hiddenCaption, hideLiveCaption, showLiveCaption } from "@/lib/live-caption";
 import { canUseSpeech, cancelSpeech, primeSpeechVoices, speakCoachLine, unlockSpeech } from "@/lib/live-speech";
 import type { GameId } from "@/lib/games";
 import { fillTemplate, localizeKnownError, uiCopy } from "@/lib/ui-copy";
@@ -43,6 +44,7 @@ export function LiveSession({
   const [error, setError] = useState("");
   const [warningCode, setWarningCode] = useState<"" | "black" | "speech">("");
   const [lastLine, setLastLine] = useState("");
+  const [caption, setCaption] = useState(hiddenCaption);
   const [speaking, setSpeaking] = useState(false);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [watching, setWatching] = useState(false);
@@ -98,6 +100,7 @@ export function LiveSession({
     setError("");
     setWarningCode("");
     setLastLine("");
+    setCaption(hiddenCaption);
     setSpeaking(false);
     setWatching(false);
     recentPrints.current = [];
@@ -127,6 +130,7 @@ export function LiveSession({
         stopStream();
         setStatus("idle");
         setSpeaking(false);
+        setCaption(hiddenCaption);
         setError(copyRef.current.shareEnded);
       });
       setSharing(true);
@@ -144,7 +148,28 @@ export function LiveSession({
     cancelSpeech();
     stopStream();
     setSpeaking(false);
+    setCaption(hiddenCaption);
     setStatus("idle");
+  }
+
+  function speechHandlers(line: string) {
+    return {
+      onstart: () => {
+        if (cancelled.current) return;
+        setSpeaking(true);
+        setCaption((current) => showLiveCaption(current, line));
+      },
+      onend: () => {
+        if (cancelled.current) return;
+        setSpeaking(false);
+        setCaption((current) => hideLiveCaption(current));
+      },
+      onerror: () => {
+        if (cancelled.current) return;
+        setSpeaking(false);
+        setCaption((current) => hideLiveCaption(current));
+      },
+    };
   }
 
   function talk(line: string) {
@@ -152,20 +177,14 @@ export function LiveSession({
     setLastLine(line);
     if (!canUseSpeech()) {
       setSpeaking(false);
+      setCaption((current) => hideLiveCaption(current));
       return;
     }
-    const started = speakCoachLine(line, configRef.current.language, {
-      onstart: () => {
-        if (!cancelled.current) setSpeaking(true);
-      },
-      onend: () => {
-        if (!cancelled.current) setSpeaking(false);
-      },
-      onerror: () => {
-        if (!cancelled.current) setSpeaking(false);
-      },
-    });
-    if (!started) setSpeaking(false);
+    const started = speakCoachLine(line, configRef.current.language, speechHandlers(line));
+    if (!started) {
+      setSpeaking(false);
+      setCaption((current) => hideLiveCaption(current));
+    }
   }
 
   async function readOnce() {
@@ -258,6 +277,7 @@ export function LiveSession({
     }
     cancelSpeech();
     setSpeaking(false);
+    setCaption((current) => hideLiveCaption(current));
     const ac = new AbortController();
     const from = spokenLang.current;
     void requestCoachTranslation(
@@ -274,18 +294,11 @@ export function LiveSession({
         spokenLang.current = language;
         if (next && next !== line) {
           setLastLine(next);
-          const started = speakCoachLine(next, language, {
-            onstart: () => {
-              if (!cancelled.current) setSpeaking(true);
-            },
-            onend: () => {
-              if (!cancelled.current) setSpeaking(false);
-            },
-            onerror: () => {
-              if (!cancelled.current) setSpeaking(false);
-            },
-          });
-          if (!started) setSpeaking(false);
+          const started = speakCoachLine(next, language, speechHandlers(next));
+          if (!started) {
+            setSpeaking(false);
+            setCaption((current) => hideLiveCaption(current));
+          }
         }
       })
       .catch((reason) => {
@@ -328,6 +341,19 @@ export function LiveSession({
                   <p className="text-[11px] leading-5 text-zinc-600">{t.sharePromptHint}</p>
                 </div>
               )}
+              {sharing && caption.text ? (
+                <div
+                  key={caption.fade}
+                  className={`live-caption ${caption.visible ? "live-caption-in" : "live-caption-out"}`}
+                  aria-hidden={!caption.visible}
+                >
+                  <div className="live-caption-frame">
+                    <p className="live-caption-text" aria-live="polite">
+                      {caption.text}
+                    </p>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
 
@@ -411,11 +437,6 @@ export function LiveSession({
                   ? chrome.stayQuietMidFight
                   : chrome.onlyPostFight}
             </p>
-            {lastLine ? (
-              <p className="mt-8 max-w-md text-sm leading-6 text-zinc-200" aria-live="polite">
-                {lastLine}
-              </p>
-            ) : null}
             <p className="mt-6 font-mono text-[9px] text-zinc-700">
               {speaking ? t.liveMetaSpeaking : watching ? t.liveMetaWatching : t.liveMetaLive} · {tick}
               {audioUnlocked && speechOk ? ` · ${t.liveMetaAudio}` : ""}

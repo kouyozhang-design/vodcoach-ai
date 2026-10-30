@@ -129,3 +129,51 @@
     @apply font-sans;
   }
 }
+
+/* Live cue: one corner line. The words stay solid. Only the frame is thin and faint. */
+.live-caption {
+  pointer-events: none;
+  position: absolute;
+  z-index: 2;
+  left: 0.5rem;
+  bottom: 0.5rem;
+  max-width: 40%;
+}
+.live-caption-in {
+  animation: live-caption-in 240ms ease-out both;
+}
+.live-caption-out {
+  animation: live-caption-out 320ms ease-in forwards;
+}
+.live-caption-frame {
+  border: 1px solid rgb(255 255 255 / 0.28);
+  background: rgb(0 0 0 / 0.22);
+  border-radius: 0.375rem;
+  padding: 0.2rem 0.45rem;
+}
+.live-caption-text {
+  margin: 0;
+  color: #fff;
+  opacity: 1;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.9);
+}
+@keyframes live-caption-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes live-caption-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .live-caption-in,
+  .live-caption-out {
+    animation-duration: 1ms;
+  }
+}
