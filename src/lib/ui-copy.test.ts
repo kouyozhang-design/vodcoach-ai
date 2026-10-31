@@ -65,4 +65,12 @@ test("every visible string exists in all 12 languages", () => {
   assert.match(page, /<PricingCards/);
   assert.match(page, /onBecomePro=\{focusPricing\}/);
   assert.match(page, /type="file"/);
+  assert.match(page, /readBillingStatus/);
+  assert.match(page, /showUploadPromo\(state\.status\)/);
+  assert.match(page, /data-testid="upload-promo"/);
+  assert.match(page, /\{t\.dropTitle\}/);
+  const fileAt = page.indexOf('type="file"');
+  const promoAt = page.indexOf("uploadPromo ?");
+  assert.ok(fileAt >= 0 && promoAt > fileAt);
+  assert.equal(page.slice(fileAt, promoAt).includes("dropTitle"), false);
 });

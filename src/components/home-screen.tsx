@@ -34,6 +34,8 @@ import {
   type SavedCoachingRecord,
   type SavedCoachingSummary,
 } from "@/lib/saved-coaching";
+import { readBillingStatus } from "@/lib/billing/checkout-client";
+import { showUploadPromo } from "@/lib/billing/events";
 import { isSignOutForm } from "@/lib/sign-out";
 import { concernFor, fillTemplate, knownConcerns, localizeKnownError, uiCopy, uploadHintFor } from "@/lib/ui-copy";
 import { Badge } from "@/components/ui/badge";
@@ -136,6 +138,7 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [translating, setTranslating] = useState(false);
   const [saved, setSaved] = useState<SavedCoachingSummary[]>([]);
+  const [uploadPromo, setUploadPromo] = useState(!signedIn);
   const [uploadedVideoUrl, setUploadedVideoUrl] = useState("");
   const [analysisFrames, setAnalysisFrames] = useState<CoachFrame[]>([]);
   const language = useSyncExternalStore(subscribeLanguage, readStoredLanguage, () => DEFAULT_COACH_LANGUAGE);
@@ -164,6 +167,24 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
   const hasNotes = concern.trim().length >= 8;
   const canSubmit = status !== "analyzing" && (Boolean(file) || hasNotes);
   const watchingStall = status === "analyzing" && chunkProgress != null;
+
+  useEffect(() => {
+    if (!signedIn) {
+      setUploadPromo(true);
+      return;
+    }
+    let cancelled = false;
+    void readBillingStatus()
+      .then((state) => {
+        if (!cancelled) setUploadPromo(showUploadPromo(state.status));
+      })
+      .catch(() => {
+        if (!cancelled) setUploadPromo(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [signedIn]);
 
   useEffect(() => {
     removeDocumentFileInputs();
@@ -823,7 +844,9 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
                   />
                   <div className="pointer-events-none flex flex-col items-center">
                     <div className="grid size-12 place-items-center rounded-2xl border border-white/[0.08] bg-white/[0.035] shadow-lg shadow-black/30"><UploadCloud className="size-5 text-red-400 transition group-hover:-translate-y-0.5" /></div>
-                    <p className="mt-4 max-w-sm text-balance text-sm font-semibold leading-6">{t.dropTitle}</p>
+                    {uploadPromo ? (
+                      <p className="mt-4 max-w-sm text-balance text-sm font-semibold leading-6" data-testid="upload-promo">{t.dropTitle}</p>
+                    ) : null}
                     <p className="mt-1.5 text-[11px] text-zinc-600">{uploadHintFor(language, game)}。{t.dropAlso}</p>
                     <span className="mt-4 inline-flex h-7 items-center rounded-lg bg-white px-2.5 text-[0.8rem] font-medium text-black">{t.chooseFile}</span>
                   </div>

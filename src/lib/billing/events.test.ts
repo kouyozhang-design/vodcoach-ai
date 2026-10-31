@@ -11,6 +11,7 @@ import {
   noticeForCheckoutQuery,
   profileWriteFor,
   publicBillingState,
+  showUploadPromo,
   statusChangeForEvent,
 } from "./events.ts";
 import { verifyStripeWebhook } from "./stripe-server.ts";
@@ -169,6 +170,31 @@ test("status reads cannot invent pro", () => {
   );
   assert.equal(normalizeBillingClientState({ signedIn: false, status: "pro" }).status, null);
   assert.equal(normalizeBillingClientState({ signedIn: true, status: "pro" }).status, "pro");
+  assert.equal(showUploadPromo(null), true);
+  assert.equal(showUploadPromo("free"), true);
+  assert.equal(showUploadPromo("pro"), false);
+  assert.equal(
+    showUploadPromo(
+      publicBillingState({
+        configured: true,
+        user: { id: USER },
+        profile: { status: "pro" },
+        readFailed: false,
+      }).status,
+    ),
+    false,
+  );
+  assert.equal(
+    showUploadPromo(
+      publicBillingState({
+        configured: true,
+        user: { id: USER },
+        profile: { status: "free" },
+        readFailed: false,
+      }).status,
+    ),
+    true,
+  );
 });
 
 test("stripe redirect hosts and production return origin are pinned", () => {

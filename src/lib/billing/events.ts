@@ -2,6 +2,11 @@ import { cleanEmail, stripeCustomerId, supabaseUserId } from "./ids.ts";
 
 export type PlanStatus = "free" | "pro";
 
+/** Signed-out and free still see the upload promo. Pro is profiles.status === "pro". */
+export function showUploadPromo(status: PlanStatus | null): boolean {
+  return status !== "pro";
+}
+
 export type StatusChange = {
   status: PlanStatus;
   userId: string | null;
