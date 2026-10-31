@@ -44,11 +44,34 @@ test("every visible string exists in all 12 languages", () => {
   assert.equal(uiCopy("ja").heroLead.includes("試合一本"), false);
   assert.equal(uiCopy("ja").heroAccent.includes("映像から改善"), false);
   assert.equal(uiCopy("ja").dropTitle, "【今だけ無料】15秒のクリップ動画から解析OK！まずは手元の動画をドロップ");
-  assert.equal(uiCopy("ja").planFreeDetail, "週1本までの動画解析、テキストアドバイスのみ");
+  assert.equal(uiCopy("ja").savedHeading, "マイAIコーチ");
+  assert.equal(uiCopy("en").savedHeading, "My AI Coach");
+  assert.equal(uiCopy("ja").planFreeDetail, "基本機能（週1本の解析、パーソナル履歴の保持）");
   assert.equal(uiCopy("ja").planFreeCurrent, "現在のプラン");
   assert.equal(uiCopy("ja").planProPrice, "月額 980円");
-  assert.equal(uiCopy("ja").planProDetail, "動画解析無制限、SNS用バズ台本自動生成、優先スピード処理");
+  assert.equal(uiCopy("ja").planProDetail, "プロフェッショナル機能（制限なしの高速解析、部隊共有リンクの永続化、詳細な癖の傾向分析）");
   assert.equal(uiCopy("ja").planProUpgrade, "Proにアップグレード（Stripe決済へ）");
+  assert.equal(uiCopy("ja").squadShare, "部隊へ共有");
+  assert.match(uiCopy("ja").squadShareTip, /Discord/);
+  assert.match(uiCopy("ja").squadShareTip, /LINE/);
+  const copySource = readFileSync(new URL("./ui-copy.ts", import.meta.url), "utf8");
+  assert.equal(copySource.includes("リロード癖"), false);
+  assert.equal(copySource.includes("孤立癖"), false);
+  const freeDetails = new Set(COACH_LANGUAGES.map((language) => uiCopy(language).planFreeDetail));
+  const proDetails = new Set(COACH_LANGUAGES.map((language) => uiCopy(language).planProDetail));
+  const squad = new Set(COACH_LANGUAGES.map((language) => uiCopy(language).squadShare));
+  assert.equal(freeDetails.size, COACH_LANGUAGES.length);
+  assert.equal(proDetails.size, COACH_LANGUAGES.length);
+  assert.equal(squad.size, COACH_LANGUAGES.length);
+  for (const language of COACH_LANGUAGES) {
+    const copy = uiCopy(language);
+    assert.equal(copy.planProDetail.includes("Shorts"), false, language);
+    assert.equal(copy.planProDetail.includes("バズ"), false, language);
+    assert.equal(copy.coachHabitEmpty.includes("リロード癖"), false, language);
+    assert.equal(copy.coachHabitEmpty.includes("孤立癖"), false, language);
+    assert.match(copy.squadShareTip, /Discord/);
+    assert.match(copy.squadShareTip, /LINE/);
+  }
   const drops = new Set(COACH_LANGUAGES.map((language) => uiCopy(language).dropTitle));
   const upgrades = new Set(COACH_LANGUAGES.map((language) => uiCopy(language).planProUpgrade));
   const freePlans = new Set(COACH_LANGUAGES.map((language) => uiCopy(language).planFreeCurrent));

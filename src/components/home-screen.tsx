@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  ChangeEvent, DragEvent, MouseEvent, useEffect, useMemo, useRef, useState, useSyncExternalStore,
+  ChangeEvent, DragEvent, MouseEvent, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore,
 } from "react";
 import {
   AlertCircle, Check, ChevronDown, FileVideo, Gamepad2, LoaderCircle,
@@ -14,6 +14,7 @@ import { LiveSession } from "@/components/live-session";
 import { PricingCards } from "@/components/pricing-cards";
 import { ProPlanControls } from "@/components/pro-plan-controls";
 import { ShareTweetButton } from "@/components/share-tweet-button";
+import { SquadShareButton } from "@/components/squad-share-button";
 import { ViralScriptBlock } from "@/components/viral-script-block";
 import {
   DEFAULT_COACH_LANGUAGE,
@@ -27,7 +28,7 @@ import { requestCoachTranslation } from "@/lib/coach/translate-client";
 import {
   deleteSavedCoaching,
   getSavedCoaching,
-  listSavedCoaching,
+  loadSavedDashboard,
   putSavedCoaching,
   rememberTranslation,
   summaryOf,
@@ -138,6 +139,7 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [translating, setTranslating] = useState(false);
   const [saved, setSaved] = useState<SavedCoachingSummary[]>([]);
+  const [habit, setHabit] = useState<string | null>(null);
   const [uploadPromo, setUploadPromo] = useState(!signedIn);
   const [uploadedVideoUrl, setUploadedVideoUrl] = useState("");
   const [analysisFrames, setAnalysisFrames] = useState<CoachFrame[]>([]);
@@ -155,6 +157,21 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
   const uploadedUrlRef = useRef("");
   const fileRef = useRef<File | null>(null);
   const pricingJumpRef = useRef(false);
+  const savedSeq = useRef(0);
+  const refreshSaved = useCallback((lang: CoachLanguage) => {
+    const seq = ++savedSeq.current;
+    void loadSavedDashboard(lang)
+      .then((dash) => {
+        if (savedSeq.current !== seq) return;
+        setSaved(dash.items);
+        setHabit(dash.habit);
+      })
+      .catch(() => {
+        if (savedSeq.current !== seq) return;
+        setSaved([]);
+        setHabit(null);
+      });
+  }, []);
   languageRef.current = language;
   fileRef.current = file;
   const gameConfig = gameConfigs[game];
@@ -233,8 +250,8 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
   }, [game, language, t.docTitle]);
 
   useEffect(() => {
-    void listSavedCoaching().then(setSaved).catch(() => setSaved([]));
-  }, []);
+    refreshSaved(language);
+  }, [language, refreshSaved]);
 
   useEffect(() => {
     if (appMode !== "vod" || !pricingJumpRef.current) return;
@@ -273,6 +290,7 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
         setResult(applyBundle(sourceResult, aligned));
         setTranslating(false);
         await rememberTranslation(activeId, language, aligned).catch(() => undefined);
+        refreshSaved(language);
         setSaved((list) =>
           list.map((item) =>
             item.id === activeId
@@ -286,7 +304,7 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
         setTranslating(false);
       });
     return () => controller.abort();
-  }, [activeId, language, sourceLanguage, sourceResult]);
+  }, [activeId, language, refreshSaved, sourceLanguage, sourceResult]);
 
   function acceptVideo(nextFile: File) {
     setError("");
@@ -622,7 +640,9 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
       id: record.id,
       videoBlob: fileRef.current ?? undefined,
       frames: framesRef.current,
-    }).catch(() => undefined);
+    })
+      .catch(() => undefined)
+      .finally(() => refreshSaved(languageRef.current));
     window.setTimeout(() => {
       if (!cancelledRef.current && runIdRef.current === runId) setStatus("complete");
     }, 260);
@@ -666,6 +686,7 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
   async function removeSaved(id: string) {
     await deleteSavedCoaching(id).catch(() => undefined);
     setSaved((list) => list.filter((item) => item.id !== id));
+    refreshSaved(languageRef.current);
     if (activeId !== id) return;
     setSourceResult(null);
     setResult(null);
@@ -792,11 +813,13 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
 
         {appMode === "vod" && (
         <div className="grid gap-4 xl:grid-cols-[0.86fr_1.14fr]">
-          <section className="xl:col-span-2 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4">
+          <section className="xl:col-span-2 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4" data-testid="coach-dashboard">
             <p className="text-[11px] font-semibold uppercase tracking-[0.13em] text-zinc-500">{t.savedHeading}</p>
-            {saved.length === 0 ? (
-              <p className="mt-2 text-xs text-zinc-600">{t.savedEmpty}</p>
-            ) : (
+            <p className="mt-3 text-sm text-zinc-200">{fillTemplate(t.coachCount, { n: saved.length })}</p>
+            <p className="mt-1 text-xs leading-5 text-zinc-500" data-testid="coach-habit">
+              {saved.length === 0 ? t.savedEmpty : habit ? habit : t.coachHabitEmpty}
+            </p>
+            {saved.length > 0 ? (
               <ul className="mt-3 divide-y divide-white/[0.06]">
                 {saved.map((item) => (
                   <li key={item.id} className="flex items-center justify-between gap-3 py-2">
@@ -808,7 +831,7 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
                   </li>
                 ))}
               </ul>
-            )}
+            ) : null}
             <PricingCards language={language} />
           </section>
           <Card className="border-white/[0.08] bg-[#0e0e10]/95 p-0 text-white shadow-2xl shadow-black/40">
@@ -935,11 +958,14 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
 
             {status === "complete" && shown && (
               <div className="animate-in fade-in slide-in-from-bottom-2 duration-700">
-                <div className="flex items-center justify-between border-b border-white/[0.06] px-5 py-4 sm:px-6">
-                  <div><div className="flex items-center gap-2"><Check className="size-3.5 text-emerald-400" /><p className="text-sm font-semibold">{shown.headline}</p></div><p className="mt-1 pl-5.5 font-mono text-[9px] text-zinc-700">ANALYSIS · {shown.analysisId.slice(0, 8).toUpperCase()}</p></div>
-                  <Badge className="border border-emerald-500/15 bg-emerald-500/10 text-[9px] text-emerald-400">
-                    {reportKind === "match" ? t.badgeMatch : reportKind === "clip" ? t.badgeClip : t.badgeNotes}
-                  </Badge>
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.06] px-5 py-4 sm:px-6">
+                  <div className="min-w-0"><div className="flex items-center gap-2"><Check className="size-3.5 text-emerald-400" /><p className="text-sm font-semibold">{shown.headline}</p></div><p className="mt-1 pl-5.5 font-mono text-[9px] text-zinc-700">ANALYSIS · {shown.analysisId.slice(0, 8).toUpperCase()}</p></div>
+                  <div className="flex items-center gap-2">
+                    <SquadShareButton result={shown} language={language} />
+                    <Badge className="border border-emerald-500/15 bg-emerald-500/10 text-[9px] text-emerald-400">
+                      {reportKind === "match" ? t.badgeMatch : reportKind === "clip" ? t.badgeClip : t.badgeNotes}
+                    </Badge>
+                  </div>
                 </div>
                 <div className="p-5 sm:p-6">
                   {translating ? <p className="mb-3 text-[11px] text-zinc-500">{t.translating}</p> : null}

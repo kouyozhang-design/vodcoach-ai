@@ -1,4 +1,5 @@
 import type { CoachLanguage } from "./coach-language.ts";
+import { habitLineFromRecords } from "./coach-habits.ts";
 import type { CoachTextBundle } from "./coach/coach-text.ts";
 import type { CoachFrame, CoachResponse } from "./coach/types.ts";
 import type { GameId } from "./games.ts";
@@ -98,18 +99,32 @@ function requestToPromise<T>(request: IDBRequest<T>) {
   });
 }
 
-export async function listSavedCoaching(): Promise<SavedCoachingSummary[]> {
+async function readAllResults(): Promise<SavedCoachingRecord[]> {
   try {
     const db = await openDb();
     const rows = await requestToPromise(db.transaction(RESULT_STORE, "readonly").objectStore(RESULT_STORE).getAll());
     db.close();
-    return (rows as SavedCoachingRecord[])
-      .filter((row) => row && typeof row.id === "string")
-      .map(summaryOf)
-      .sort((a, b) => b.savedAt - a.savedAt);
+    return (rows as SavedCoachingRecord[]).filter((row) => row && typeof row.id === "string");
   } catch {
     return [];
   }
+}
+
+function summariesOf(rows: SavedCoachingRecord[]) {
+  return rows.map(summaryOf).sort((a, b) => b.savedAt - a.savedAt);
+}
+
+export async function listSavedCoaching(): Promise<SavedCoachingSummary[]> {
+  return summariesOf(await readAllResults());
+}
+
+/** Count comes from the caller’s list. The habit line is empty when the saved text does not say one. */
+export async function loadSavedDashboard(language: CoachLanguage): Promise<{ items: SavedCoachingSummary[]; habit: string | null }> {
+  const rows = await readAllResults();
+  return {
+    items: summariesOf(rows),
+    habit: habitLineFromRecords(rows, language),
+  };
 }
 
 export async function getSavedCoaching(id: string): Promise<{ record: SavedCoachingRecord; media: SavedCoachingMedia | null } | null> {
