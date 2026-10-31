@@ -1,13 +1,12 @@
 "use client";
 
 import {
-  ChangeEvent, DragEvent, MouseEvent, useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition,
+  ChangeEvent, DragEvent, MouseEvent, useEffect, useMemo, useRef, useState, useSyncExternalStore,
 } from "react";
 import {
   AlertCircle, Check, ChevronDown, FileVideo, Gamepad2, LoaderCircle,
   Monitor, Play, ScanLine, Shield, Sparkles, UploadCloud, X,
 } from "lucide-react";
-import { signOutToHome } from "@/app/auth/sign-out-action";
 import { FightExpanders } from "@/components/fight-expanders";
 import { InsightBoard } from "@/components/insight-board";
 import { LanguagePicker } from "@/components/language-picker";
@@ -34,6 +33,7 @@ import {
   type SavedCoachingRecord,
   type SavedCoachingSummary,
 } from "@/lib/saved-coaching";
+import { isSignOutForm } from "@/lib/sign-out";
 import { concernFor, fillTemplate, knownConcerns, localizeKnownError, uiCopy, uploadHintFor } from "@/lib/ui-copy";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -113,7 +113,6 @@ function nowMs() {
 }
 
 export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
-  const [signingOut, startSignOut] = useTransition();
   const [appMode, setAppMode] = useState<AppMode>("vod");
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState("");
@@ -168,6 +167,9 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
     removeDocumentFileInputs();
     const undoValidityPatch = installSafariValidityPatch();
     const blockNative = (event: Event) => {
+      // Logout is a real POST. Every other submit stays cancelled so Safari
+      // does not validate the file input and reload the page.
+      if (event.type === "submit" && isSignOutForm(event.target)) return;
       silenceNativeValidation(event);
     };
     window.addEventListener("submit", blockNative, true);
@@ -679,14 +681,14 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
           <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
             <ProPlanControls language={language} />
             {signedIn ? (
-              <button
-                type="button"
-                onClick={() => startSignOut(() => void signOutToHome())}
-                disabled={signingOut}
-                className="rounded-full border border-white/[0.08] px-2.5 py-1 text-[10px] font-semibold text-zinc-300 hover:text-white disabled:opacity-60"
-              >
-                {t.signOut}
-              </button>
+              <form action="/auth/sign-out" method="post" className="inline-flex">
+                <button
+                  type="submit"
+                  className="rounded-full border border-white/[0.08] px-2.5 py-1 text-[10px] font-semibold text-zinc-300 hover:text-white"
+                >
+                  {t.signOut}
+                </button>
+              </form>
             ) : null}
             <LanguagePicker language={language} label={t.languageLabel} onChange={changeLanguage} />
             <Badge className="border border-red-500/15 bg-red-500/10 text-[10px] text-red-300">
