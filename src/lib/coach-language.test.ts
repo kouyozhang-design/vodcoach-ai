@@ -33,7 +33,9 @@ test("prompts and cheap chrome switch with language", () => {
   assert.equal(shareChrome("ja").label, "X（旧Twitter）にシェアする");
   assert.equal(shareChrome("en").label, "Share on X (Twitter)");
   assert.equal(viralChrome("ja").heading, "バズる台本");
+  assert.equal(viralChrome("ja").copy, "台本をコピーする");
   assert.equal(viralChrome("en").heading, "Shorts script");
+  assert.equal(viralChrome("en").copy, "Copy the script");
   assert.equal(fightChrome("ja").sightlines, "細かい斜線管理");
   assert.equal(fightChrome("ja").knowHow, "戦闘のノウハウ");
   assert.equal(fightChrome("en").sightlines, "Fine sightline work");

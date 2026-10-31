@@ -447,21 +447,27 @@ export function liveChrome(language: CoachLanguage) {
   return LIVE_CHROME[language];
 }
 
-type ViralChrome = { heading: string; copy: string; copied: string };
+type ViralChrome = {
+  heading: string;
+  title: string;
+  tsukkomi: string;
+  copy: string;
+  copied: string;
+};
 
 const VIRAL_CHROME: Record<CoachLanguage, ViralChrome> = {
-  ja: { heading: "バズる台本", copy: "コピー", copied: "コピーした" },
-  en: { heading: "Shorts script", copy: "Copy", copied: "Copied" },
-  pt: { heading: "Roteiro de Shorts", copy: "Copiar", copied: "Copiado" },
-  ko: { heading: "숏폼 대본", copy: "복사", copied: "복사함" },
-  de: { heading: "Shorts-Skript", copy: "Kopieren", copied: "Kopiert" },
-  fr: { heading: "Script Shorts", copy: "Copier", copied: "Copié" },
-  es: { heading: "Guion de Shorts", copy: "Copiar", copied: "Copiado" },
-  pl: { heading: "Skrypt Shorts", copy: "Kopiuj", copied: "Skopiowano" },
-  "zh-TW": { heading: "短影音台本", copy: "複製", copied: "已複製" },
-  tr: { heading: "Shorts metni", copy: "Kopyala", copied: "Kopyalandı" },
-  it: { heading: "Script Shorts", copy: "Copia", copied: "Copiato" },
-  id: { heading: "Naskah Shorts", copy: "Salin", copied: "Tersalin" },
+  ja: { heading: "バズる台本", title: "タイトル", tsukkomi: "ツッコミ", copy: "台本をコピーする", copied: "コピーした" },
+  en: { heading: "Shorts script", title: "Title", tsukkomi: "Roast", copy: "Copy the script", copied: "Copied" },
+  pt: { heading: "Roteiro de Shorts", title: "Título", tsukkomi: "Alfinetada", copy: "Copiar o roteiro", copied: "Copiado" },
+  ko: { heading: "숏폼 대본", title: "제목", tsukkomi: "한마디", copy: "대본 복사하기", copied: "복사함" },
+  de: { heading: "Shorts-Skript", title: "Titel", tsukkomi: "Ansage", copy: "Skript kopieren", copied: "Kopiert" },
+  fr: { heading: "Script Shorts", title: "Titre", tsukkomi: "Pique", copy: "Copier le script", copied: "Copié" },
+  es: { heading: "Guion de Shorts", title: "Título", tsukkomi: "Pullazo", copy: "Copiar el guion", copied: "Copiado" },
+  pl: { heading: "Skrypt Shorts", title: "Tytuł", tsukkomi: "Docinek", copy: "Kopiuj scenariusz", copied: "Skopiowano" },
+  "zh-TW": { heading: "短影音台本", title: "標題", tsukkomi: "吐槽", copy: "複製台本", copied: "已複製" },
+  tr: { heading: "Shorts metni", title: "Başlık", tsukkomi: "Laf", copy: "Metni kopyala", copied: "Kopyalandı" },
+  it: { heading: "Script Shorts", title: "Titolo", tsukkomi: "Stoccata", copy: "Copia il copione", copied: "Copiato" },
+  id: { heading: "Naskah Shorts", title: "Judul", tsukkomi: "Sindir", copy: "Salin naskah", copied: "Tersalin" },
 };
 
 export function viralChrome(language: CoachLanguage) {

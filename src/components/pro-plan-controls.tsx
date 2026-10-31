@@ -3,12 +3,9 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { uiCopy } from "@/lib/ui-copy";
+import { readBillingStatus, requestStripeCheckout } from "@/lib/billing/checkout-client";
 import { isStripeRedirect } from "@/lib/billing/redirect";
-import {
-  normalizeBillingClientState,
-  noticeForCheckoutQuery,
-  type PublicBillingState,
-} from "@/lib/billing/events";
+import { noticeForCheckoutQuery, type PublicBillingState } from "@/lib/billing/events";
 import type { CoachLanguage } from "@/lib/coach-language";
 
 const signedOut: PublicBillingState = {
@@ -18,12 +15,6 @@ const signedOut: PublicBillingState = {
   canManage: false,
   email: null,
 };
-
-async function readStatus(): Promise<PublicBillingState> {
-  const response = await fetch("/api/billing/status", { cache: "no-store" });
-  const body = await response.json().catch(() => null);
-  return normalizeBillingClientState(body);
-}
 
 function planLabels(language: CoachLanguage) {
   const copy = uiCopy(language);
@@ -53,7 +44,13 @@ function ProButtonFallback({ language }: { language: CoachLanguage }) {
   );
 }
 
-function ProPlanControlsInner({ language }: { language: CoachLanguage }) {
+function ProPlanControlsInner({
+  language,
+  onBecomePro,
+}: {
+  language: CoachLanguage;
+  onBecomePro?: () => void;
+}) {
   const copy = planLabels(language);
   const router = useRouter();
   const checkout = noticeForCheckoutQuery(useSearchParams().get("checkout"));
@@ -66,7 +63,7 @@ function ProPlanControlsInner({ language }: { language: CoachLanguage }) {
 
   useEffect(() => {
     let cancelled = false;
-    void readStatus()
+    void readBillingStatus()
       .then((next) => {
         if (!cancelled) setState(next);
       })
@@ -86,7 +83,7 @@ function ProPlanControlsInner({ language }: { language: CoachLanguage }) {
     let ticks = 0;
     const timer = window.setInterval(() => {
       ticks += 1;
-      void readStatus()
+      void readBillingStatus()
         .then((next) => setState(next))
         .catch(() => undefined);
       if (ticks >= 8) window.clearInterval(timer);
@@ -94,16 +91,48 @@ function ProPlanControlsInner({ language }: { language: CoachLanguage }) {
     return () => window.clearInterval(timer);
   }, [checkout]);
 
-  async function openBilling(path: "/api/billing/checkout" | "/api/billing/portal") {
+  async function openCheckout() {
     if (!state.signedIn) {
       router.push("/auth");
       return;
     }
     setPending(true);
     setActionNotice(null);
-    const kind = path.endsWith("portal") ? "portal" : "checkout";
     try {
-      const response = await fetch(path, {
+      const result = await requestStripeCheckout(language);
+      if (result.kind === "auth") {
+        router.push("/auth");
+        return;
+      }
+      if (result.kind === "not_configured") {
+        setActionNotice(copy.notConfigured);
+        return;
+      }
+      if (result.kind === "no_account") {
+        setActionNotice(copy.noAccount);
+        return;
+      }
+      if (result.kind !== "url") {
+        setActionNotice(copy.checkoutFailed);
+        return;
+      }
+      window.location.assign(result.url);
+    } catch {
+      setActionNotice(copy.checkoutFailed);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function openPortal() {
+    if (!state.signedIn) {
+      router.push("/auth");
+      return;
+    }
+    setPending(true);
+    setActionNotice(null);
+    try {
+      const response = await fetch("/api/billing/portal", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ language }),
@@ -121,13 +150,13 @@ function ProPlanControlsInner({ language }: { language: CoachLanguage }) {
         setActionNotice(copy.noAccount);
         return;
       }
-      if (!response.ok || typeof body?.url !== "string" || !isStripeRedirect(body.url, kind)) {
-        setActionNotice(kind === "portal" ? copy.portalFailed : copy.checkoutFailed);
+      if (!response.ok || typeof body?.url !== "string" || !isStripeRedirect(body.url, "portal")) {
+        setActionNotice(copy.portalFailed);
         return;
       }
       window.location.assign(body.url);
     } catch {
-      setActionNotice(kind === "portal" ? copy.portalFailed : copy.checkoutFailed);
+      setActionNotice(copy.portalFailed);
     } finally {
       setPending(false);
     }
@@ -148,19 +177,26 @@ function ProPlanControlsInner({ language }: { language: CoachLanguage }) {
           <span className="hidden max-w-32 truncate text-[10px] text-zinc-500 lg:inline">{state.email}</span>
         ) : null}
         {showPro ? (
-          <button
-            type="button"
-            onClick={() => void openBilling("/api/billing/checkout")}
-            disabled={!loaded || pending}
-            className="rounded-full bg-red-600 px-2.5 py-1 text-[10px] font-semibold text-white hover:bg-red-500 disabled:opacity-60"
+          <a
+            href="#pricing"
+            onClick={(event) => {
+              event.preventDefault();
+              if (onBecomePro) {
+                onBecomePro();
+                return;
+              }
+              if (!loaded || pending) return;
+              void openCheckout();
+            }}
+            className="rounded-full bg-red-600 px-2.5 py-1 text-[10px] font-semibold text-white hover:bg-red-500"
           >
             {pending ? copy.working : copy.becomePro}
-          </button>
+          </a>
         ) : null}
         {showManage ? (
           <button
             type="button"
-            onClick={() => void openBilling("/api/billing/portal")}
+            onClick={() => void openPortal()}
             disabled={!loaded || pending}
             className="rounded-full border border-white/[0.08] px-2.5 py-1 text-[10px] font-semibold text-zinc-300 hover:text-white disabled:opacity-60"
           >
@@ -177,10 +213,16 @@ function ProPlanControlsInner({ language }: { language: CoachLanguage }) {
   );
 }
 
-export function ProPlanControls({ language }: { language: CoachLanguage }) {
+export function ProPlanControls({
+  language,
+  onBecomePro,
+}: {
+  language: CoachLanguage;
+  onBecomePro?: () => void;
+}) {
   return (
     <Suspense fallback={<ProButtonFallback language={language} />}>
-      <ProPlanControlsInner language={language} />
+      <ProPlanControlsInner language={language} onBecomePro={onBecomePro} />
     </Suspense>
   );
 }

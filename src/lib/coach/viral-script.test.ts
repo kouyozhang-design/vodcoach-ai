@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import {
   CTA_MAX_CHARS,
@@ -6,6 +7,7 @@ import {
   TSUKKOMI_MAX_CHARS,
   charLength,
   defaultCta,
+  formatViralHookCopy,
   formatViralScriptCopy,
   parseViralScript,
 } from "./viral-script.ts";
@@ -67,4 +69,19 @@ test("formatViralScriptCopy is the three lines", () => {
     text,
     `岩を離れて2射線\n00:04、岩を離れて左右を同時に開けてる。\n${defaultCta("en")}`,
   );
+});
+
+test("formatViralHookCopy is the title and the roast, without the CTA", () => {
+  const text = formatViralHookCopy({
+    video_title: "岩を離れて2射線",
+    ai_tsukkomi: "00:04、岩を離れて左右を同時に開けてる。",
+    cta_text: defaultCta("ja"),
+  });
+  assert.equal(text, "岩を離れて2射線\n00:04、岩を離れて左右を同時に開けてる。");
+  assert.equal(text.includes(defaultCta("ja")), false);
+  const block = readFileSync(new URL("../../components/viral-script-block.tsx", import.meta.url), "utf8");
+  assert.match(block, /from "@\/components\/ui\/button"/);
+  assert.match(block, /formatViralHookCopy/);
+  assert.match(block, /<Button/);
+  assert.equal(block.includes("formatViralScriptCopy"), false);
 });

@@ -11,6 +11,7 @@ import { FightExpanders } from "@/components/fight-expanders";
 import { InsightBoard } from "@/components/insight-board";
 import { LanguagePicker } from "@/components/language-picker";
 import { LiveSession } from "@/components/live-session";
+import { PricingCards } from "@/components/pricing-cards";
 import { ProPlanControls } from "@/components/pro-plan-controls";
 import { ShareTweetButton } from "@/components/share-tweet-button";
 import { ViralScriptBlock } from "@/components/viral-script-block";
@@ -150,6 +151,7 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
   const framesRef = useRef<CoachFrame[]>([]);
   const uploadedUrlRef = useRef("");
   const fileRef = useRef<File | null>(null);
+  const pricingJumpRef = useRef(false);
   languageRef.current = language;
   fileRef.current = file;
   const gameConfig = gameConfigs[game];
@@ -212,6 +214,15 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
   useEffect(() => {
     void listSavedCoaching().then(setSaved).catch(() => setSaved([]));
   }, []);
+
+  useEffect(() => {
+    if (appMode !== "vod" || !pricingJumpRef.current) return;
+    const frame = window.requestAnimationFrame(() => {
+      pricingJumpRef.current = false;
+      document.getElementById("pricing")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [appMode]);
 
   useEffect(() => {
     if (!sourceResult || !activeId) {
@@ -658,6 +669,15 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
     return "";
   }
 
+  function focusPricing() {
+    if (appMode === "vod") {
+      document.getElementById("pricing")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    pricingJumpRef.current = true;
+    setAppMode("vod");
+  }
+
   const reportKind = shown?.kind ?? (file ? "clip" : "notes");
   const insightInstant = Boolean(shown && shown.insights.length > 6);
   const progressLabel = progressText();
@@ -679,7 +699,7 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
             </div>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
-            <ProPlanControls language={language} />
+            <ProPlanControls language={language} onBecomePro={focusPricing} />
             {signedIn ? (
               <form action="/auth/sign-out" method="post" className="inline-flex">
                 <button
@@ -702,8 +722,8 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
           <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-red-400">
             <ScanLine className="size-3.5" />{t.eyebrow}
           </div>
-          <h1 className="mt-3 max-w-3xl text-4xl font-semibold leading-[1.04] tracking-[-0.05em] sm:text-5xl lg:text-[58px]">
-            {t.heroLead}<span className="inline-block bg-gradient-to-r from-red-300 via-red-500 to-orange-400 bg-clip-text text-transparent">{t.heroAccent}</span>
+          <h1 className="mt-3 max-w-4xl text-4xl font-semibold leading-[1.12] tracking-[-0.05em] sm:text-5xl lg:text-[52px]">
+            {t.heroLead}<span className="bg-gradient-to-r from-red-300 via-red-500 to-orange-400 bg-clip-text text-transparent">{t.heroAccent}</span>
           </h1>
           <p className="mt-4 max-w-2xl text-sm leading-6 text-zinc-500">
             {t.heroBody}
@@ -768,6 +788,7 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
                 ))}
               </ul>
             )}
+            <PricingCards language={language} />
           </section>
           <Card className="border-white/[0.08] bg-[#0e0e10]/95 p-0 text-white shadow-2xl shadow-black/40">
             <div className="p-4 sm:p-5">
@@ -802,7 +823,7 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
                   />
                   <div className="pointer-events-none flex flex-col items-center">
                     <div className="grid size-12 place-items-center rounded-2xl border border-white/[0.08] bg-white/[0.035] shadow-lg shadow-black/30"><UploadCloud className="size-5 text-red-400 transition group-hover:-translate-y-0.5" /></div>
-                    <p className="mt-4 text-sm font-medium">{t.dropTitle}</p>
+                    <p className="mt-4 max-w-sm text-balance text-sm font-semibold leading-6">{t.dropTitle}</p>
                     <p className="mt-1.5 text-[11px] text-zinc-600">{uploadHintFor(language, game)}。{t.dropAlso}</p>
                     <span className="mt-4 inline-flex h-7 items-center rounded-lg bg-white px-2.5 text-[0.8rem] font-medium text-black">{t.chooseFile}</span>
                   </div>
@@ -920,6 +941,9 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
                       language={language}
                     />
                   )}
+                  {shown.viralScript ? (
+                    <ViralScriptBlock script={shown.viralScript} language={language} />
+                  ) : null}
                   <FightExpanders
                     fights={shown.closeRangeFights ?? []}
                     language={language}
@@ -927,9 +951,6 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
                     videoUrl={uploadedVideoUrl}
                     frames={analysisFrames}
                   />
-                  {shown.viralScript ? (
-                    <ViralScriptBlock script={shown.viralScript} language={language} />
-                  ) : null}
                   <div className="mt-6 flex justify-end border-t border-white/[0.06] pt-5">
                     <ShareTweetButton result={shown} language={language} />
                   </div>

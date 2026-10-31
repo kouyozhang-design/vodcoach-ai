@@ -60,3 +60,8 @@ export function parseViralScript(
 export function formatViralScriptCopy(script: ViralScript) {
   return [script.video_title, script.ai_tsukkomi, script.cta_text].join("\n");
 }
+
+/** Title and roast line only. The on-screen CTA stays out of the one-tap copy. */
+export function formatViralHookCopy(script: ViralScript) {
+  return [script.video_title, script.ai_tsukkomi].join("\n");
+}

@@ -226,6 +226,8 @@ function sourceFiles(dir: string): string[] {
 test("browser billing code does not touch server secrets", () => {
   const clientFiles = [
     "src/components/pro-plan-controls.tsx",
+    "src/components/pricing-cards.tsx",
+    "src/lib/billing/checkout-client.ts",
     "src/app/auth/page.tsx",
     "src/app/page.tsx",
     "src/components/home-screen.tsx",
