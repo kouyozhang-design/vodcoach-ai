@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { summaryOf, withTranslation, withoutId, type SavedCoachingRecord } from "./saved-coaching.ts";
+import { coachingView, summaryOf, withTranslation, withoutId, type SavedCoachingRecord } from "./saved-coaching.ts";
 
 const record: SavedCoachingRecord = {
   id: "one",
@@ -35,6 +35,29 @@ test("a language cache lands on the same record and delete removes only that id"
   const summary = summaryOf(next);
   assert.equal(summary.headlines.ko, "바위");
   assert.equal(summary.headlines.ja, "岩");
+});
+
+test("reopening a saved row is the stored coaching, not the title", () => {
+  const stored: SavedCoachingRecord = {
+    ...record,
+    result: {
+      ...record.result,
+      insights: [{ id: "wide", title: "ワイド", finding: "2射線を同時に開いた", action: "片側を切ってからピーク" }],
+    },
+    translations: {
+      ja: {
+        headline: "岩",
+        summary: "2射線",
+        insights: [{ id: "wide", title: "ワイド", finding: "2射線を同時に開いた", action: "片側を切ってからピーク" }],
+      },
+    },
+  };
+  const view = coachingView(stored, "ja");
+  assert.equal(view.headline, "岩");
+  assert.equal(view.summary, "2射線");
+  assert.equal(view.insights[0]?.finding, "2射線を同時に開いた");
+  assert.equal(view.insights[0]?.action, "片側を切ってからピーク");
+  assert.notEqual(view.insights[0]?.finding, view.headline);
 });
 
 test("local save does not import Supabase", () => {

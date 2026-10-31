@@ -46,6 +46,14 @@ test("every visible string exists in all 12 languages", () => {
   assert.equal(uiCopy("ja").dropTitle, "【今だけ無料】15秒のクリップ動画から解析OK！まずは手元の動画をドロップ");
   assert.equal(uiCopy("ja").savedHeading, "マイAIコーチ");
   assert.equal(uiCopy("en").savedHeading, "My AI Coach");
+  assert.match(uiCopy("ja").savedDeviceNote, /別の端末には出ません/);
+  assert.match(uiCopy("en").savedDeviceNote, /another phone/);
+  assert.equal(uiCopy("ja").chatTitle, "この試合に聞く");
+  assert.equal(uiCopy("en").chatTitle, "Ask about this fight");
+  const chatTitles = new Set(COACH_LANGUAGES.map((language) => uiCopy(language).chatTitle));
+  const deviceNotes = new Set(COACH_LANGUAGES.map((language) => uiCopy(language).savedDeviceNote));
+  assert.equal(chatTitles.size, COACH_LANGUAGES.length);
+  assert.equal(deviceNotes.size, COACH_LANGUAGES.length);
   assert.equal(uiCopy("ja").planFreeDetail, "基本機能（週1本の解析、パーソナル履歴の保持）");
   assert.equal(uiCopy("ja").planFreeCurrent, "現在のプラン");
   assert.equal(uiCopy("ja").planProPrice, "月額 980円");
@@ -71,6 +79,8 @@ test("every visible string exists in all 12 languages", () => {
     assert.equal(copy.coachHabitEmpty.includes("孤立癖"), false, language);
     assert.match(copy.squadShareTip, /Discord/);
     assert.match(copy.squadShareTip, /LINE/);
+    assert.notEqual(copy.savedDeviceNote, copy.savedAccountNote);
+    assert.notEqual(copy.chatTitle, copy.chatSend);
   }
   const drops = new Set(COACH_LANGUAGES.map((language) => uiCopy(language).dropTitle));
   const upgrades = new Set(COACH_LANGUAGES.map((language) => uiCopy(language).planProUpgrade));

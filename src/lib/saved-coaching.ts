@@ -1,6 +1,6 @@
 import type { CoachLanguage } from "./coach-language.ts";
 import { habitLineFromRecords } from "./coach-habits.ts";
-import type { CoachTextBundle } from "./coach/coach-text.ts";
+import { applyBundle, type CoachTextBundle } from "./coach/coach-text.ts";
 import type { CoachFrame, CoachResponse } from "./coach/types.ts";
 import type { GameId } from "./games.ts";
 
@@ -22,6 +22,10 @@ export type SavedCoachingRecord = {
   translations: Partial<Record<CoachLanguage, CoachTextBundle>>;
   videoName?: string;
   remoteVideoUrl?: string;
+  /** Device-only. Set while a signed-in save has not reached the account yet. */
+  pendingAccount?: boolean;
+  /** Device-only. Set after this row has been stored on the signed-in account. */
+  accountCopy?: boolean;
 };
 
 export type SavedCoachingMedia = {
@@ -54,6 +58,13 @@ export function withTranslation(
 
 export function withoutId<T extends { id: string }>(records: T[], id: string) {
   return records.filter((record) => record.id !== id);
+}
+
+/** The stored coaching in the selected language, including insights. Not the title alone. */
+export function coachingView(record: SavedCoachingRecord, language: CoachLanguage): CoachResponse {
+  const bundle = record.translations[language] ?? record.translations[record.sourceLanguage];
+  if (!bundle) return record.result;
+  return applyBundle(record.result, bundle);
 }
 
 export function summaryOf(record: SavedCoachingRecord): SavedCoachingSummary {
@@ -114,16 +125,26 @@ function summariesOf(rows: SavedCoachingRecord[]) {
   return rows.map(summaryOf).sort((a, b) => b.savedAt - a.savedAt);
 }
 
+export async function listSavedRecords(): Promise<SavedCoachingRecord[]> {
+  const rows = await readAllResults();
+  return rows.sort((a, b) => b.savedAt - a.savedAt);
+}
+
 export async function listSavedCoaching(): Promise<SavedCoachingSummary[]> {
   return summariesOf(await readAllResults());
 }
 
 /** Count comes from the caller’s list. The habit line is empty when the saved text does not say one. */
-export async function loadSavedDashboard(language: CoachLanguage): Promise<{ items: SavedCoachingSummary[]; habit: string | null }> {
-  const rows = await readAllResults();
+export async function loadSavedDashboard(language: CoachLanguage): Promise<{
+  items: SavedCoachingSummary[];
+  records: SavedCoachingRecord[];
+  habit: string | null;
+}> {
+  const records = await listSavedRecords();
   return {
-    items: summariesOf(rows),
-    habit: habitLineFromRecords(rows, language),
+    items: summariesOf(records),
+    records,
+    habit: habitLineFromRecords(records, language),
   };
 }
 

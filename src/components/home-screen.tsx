@@ -7,8 +7,10 @@ import {
   AlertCircle, Check, ChevronDown, FileVideo, Gamepad2, LoaderCircle,
   Monitor, Play, ScanLine, Shield, Sparkles, UploadCloud, X,
 } from "lucide-react";
+import { AnalysisChat } from "@/components/analysis-chat";
 import { FightExpanders } from "@/components/fight-expanders";
 import { InsightBoard } from "@/components/insight-board";
+import { SavedAnalyses } from "@/components/saved-analyses";
 import { LanguagePicker } from "@/components/language-picker";
 import { LiveSession } from "@/components/live-session";
 import { PricingCards } from "@/components/pricing-cards";
@@ -25,15 +27,16 @@ import {
 } from "@/lib/coach-language";
 import { alignBundle, applyBundle, bundleFromResult, type CoachTextBundle } from "@/lib/coach/coach-text";
 import { requestCoachTranslation } from "@/lib/coach/translate-client";
+import { markAccountDeleted, saveAccountCopy, syncAccountAnalyses } from "@/lib/account-sync";
+import { deleteAccountAnalysis } from "@/lib/account-analyses-client";
 import {
   deleteSavedCoaching,
   getSavedCoaching,
   loadSavedDashboard,
   putSavedCoaching,
   rememberTranslation,
-  summaryOf,
+  withTranslation,
   type SavedCoachingRecord,
-  type SavedCoachingSummary,
 } from "@/lib/saved-coaching";
 import { readBillingStatus } from "@/lib/billing/checkout-client";
 import { showUploadPromo } from "@/lib/billing/events";
@@ -138,7 +141,7 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
   const [sourceLanguage, setSourceLanguage] = useState<CoachLanguage>(DEFAULT_COACH_LANGUAGE);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [translating, setTranslating] = useState(false);
-  const [saved, setSaved] = useState<SavedCoachingSummary[]>([]);
+  const [saved, setSaved] = useState<SavedCoachingRecord[]>([]);
   const [habit, setHabit] = useState<string | null>(null);
   const [uploadPromo, setUploadPromo] = useState(!signedIn);
   const [uploadedVideoUrl, setUploadedVideoUrl] = useState("");
@@ -160,18 +163,18 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
   const savedSeq = useRef(0);
   const refreshSaved = useCallback((lang: CoachLanguage) => {
     const seq = ++savedSeq.current;
-    void loadSavedDashboard(lang)
-      .then((dash) => {
-        if (savedSeq.current !== seq) return;
-        setSaved(dash.items);
-        setHabit(dash.habit);
-      })
-      .catch(() => {
-        if (savedSeq.current !== seq) return;
-        setSaved([]);
-        setHabit(null);
-      });
-  }, []);
+    void (async () => {
+      if (signedIn) await syncAccountAnalyses().catch(() => undefined);
+      const dash = await loadSavedDashboard(lang);
+      if (savedSeq.current !== seq) return;
+      setSaved(dash.records);
+      setHabit(dash.habit);
+    })().catch(() => {
+      if (savedSeq.current !== seq) return;
+      setSaved([]);
+      setHabit(null);
+    });
+  }, [signedIn]);
   languageRef.current = language;
   fileRef.current = file;
   const gameConfig = gameConfigs[game];
@@ -290,13 +293,13 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
         setResult(applyBundle(sourceResult, aligned));
         setTranslating(false);
         await rememberTranslation(activeId, language, aligned).catch(() => undefined);
+        if (signedIn) {
+          const loaded = await getSavedCoaching(activeId);
+          if (loaded) await saveAccountCopy(loaded.record, loaded.media).catch(() => undefined);
+        }
         refreshSaved(language);
         setSaved((list) =>
-          list.map((item) =>
-            item.id === activeId
-              ? { ...item, headlines: { ...item.headlines, [language]: aligned.headline } }
-              : item,
-          ),
+          list.map((item) => (item.id === activeId ? withTranslation(item, language, aligned) : item)),
         );
       })
       .catch((reason) => {
@@ -304,7 +307,7 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
         setTranslating(false);
       });
     return () => controller.abort();
-  }, [activeId, language, refreshSaved, sourceLanguage, sourceResult]);
+  }, [activeId, language, refreshSaved, signedIn, sourceLanguage, sourceResult]);
 
   function acceptVideo(nextFile: File) {
     setError("");
@@ -635,14 +638,14 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
     setTranslations({ [lang]: bundle });
     setActiveId(payload.analysisId);
     setResult(payload);
-    setSaved((list) => [summaryOf(record), ...list.filter((item) => item.id !== record.id)]);
-    void putSavedCoaching(record, {
+    setSaved((list) => [record, ...list.filter((item) => item.id !== record.id)]);
+    const media = {
       id: record.id,
       videoBlob: fileRef.current ?? undefined,
       frames: framesRef.current,
-    })
-      .catch(() => undefined)
-      .finally(() => refreshSaved(languageRef.current));
+    };
+    const persist = signedIn ? saveAccountCopy(record, media) : putSavedCoaching(record, media);
+    void persist.catch(() => undefined).finally(() => refreshSaved(languageRef.current));
     window.setTimeout(() => {
       if (!cancelledRef.current && runIdRef.current === runId) setStatus("complete");
     }, 260);
@@ -684,6 +687,10 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
   }
 
   async function removeSaved(id: string) {
+    if (signedIn) {
+      const removed = await deleteAccountAnalysis(id);
+      if (!removed) markAccountDeleted(id);
+    }
     await deleteSavedCoaching(id).catch(() => undefined);
     setSaved((list) => list.filter((item) => item.id !== id));
     refreshSaved(languageRef.current);
@@ -817,21 +824,17 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
             <p className="text-[11px] font-semibold uppercase tracking-[0.13em] text-zinc-500">{t.savedHeading}</p>
             <p className="mt-3 text-sm text-zinc-200">{fillTemplate(t.coachCount, { n: saved.length })}</p>
             <p className="mt-1 text-xs leading-5 text-zinc-500" data-testid="coach-habit">
-              {saved.length === 0 ? t.savedEmpty : habit ? habit : t.coachHabitEmpty}
+              {saved.length === 0 ? (signedIn ? t.savedEmptyAccount : t.savedEmpty) : habit ? habit : t.coachHabitEmpty}
             </p>
-            {saved.length > 0 ? (
-              <ul className="mt-3 divide-y divide-white/[0.06]">
-                {saved.map((item) => (
-                  <li key={item.id} className="flex items-center justify-between gap-3 py-2">
-                    <button type="button" onClick={() => void openSaved(item.id)} className="min-w-0 flex-1 truncate text-left text-sm text-zinc-200 hover:text-white">
-                      {item.headlines[language] || item.headlines[item.sourceLanguage] || item.character}
-                    </button>
-                    <button type="button" onClick={() => void openSaved(item.id)} className="text-[11px] font-semibold text-zinc-400 hover:text-white">{t.savedOpen}</button>
-                    <button type="button" onClick={() => void removeSaved(item.id)} className="text-[11px] font-semibold text-red-300 hover:text-red-200" aria-label={t.savedDelete}>{t.savedDelete}</button>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
+            <p className="mt-1 text-xs leading-5 text-zinc-600" data-testid="saved-scope">
+              {signedIn ? t.savedAccountNote : t.savedDeviceNote}
+            </p>
+            <SavedAnalyses
+              records={saved}
+              language={language}
+              onOpen={(id) => void openSaved(id)}
+              onDelete={(id) => void removeSaved(id)}
+            />
             <PricingCards language={language} />
           </section>
           <Card className="border-white/[0.08] bg-[#0e0e10]/95 p-0 text-white shadow-2xl shadow-black/40">
@@ -999,6 +1002,12 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
                     previewUrl={previewUrl}
                     videoUrl={uploadedVideoUrl}
                     frames={analysisFrames}
+                  />
+                  <AnalysisChat
+                    analysis={shown}
+                    language={language}
+                    rank={saved.find((item) => item.id === shown.analysisId)?.rank ?? rank}
+                    concern={saved.find((item) => item.id === shown.analysisId)?.concern ?? concern}
                   />
                   <div className="mt-6 flex justify-end border-t border-white/[0.06] pt-5">
                     <ShareTweetButton result={shown} language={language} />
