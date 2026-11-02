@@ -396,6 +396,9 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
 
   async function submit() {
     silenceNativeValidation();
+    // Strict Mode runs the mount cleanup before the user can click, and that
+    // cleanup leaves this flag set. A new submit is a live instance.
+    cancelledRef.current = false;
     if (!file && concern.trim().length < 8) {
       setError(uiCopy(languageRef.current).needInput);
       setStatus("error");
