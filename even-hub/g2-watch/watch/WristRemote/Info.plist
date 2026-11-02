@@ -4,6 +4,10 @@
 <dict>
   <key>WKApplication</key>
   <true/>
+  <key>WKRunsIndependentlyOfCompanionApp</key>
+  <true/>
+  <key>CFBundleDisplayName</key>
+  <string>Watch G2</string>
   <key>NSAppTransportSecurity</key>
   <dict>
     <key>NSAllowsLocalNetworking</key>

@@ -57,6 +57,13 @@ let code = "";
 let revision = -1;
 let polling = false;
 
+function pairCode(value: string | null) {
+  if (!value) return null;
+  const next = value.trim().toUpperCase();
+  if (!/^[A-Z2-9]{4}$/.test(next) || /[01IO]/.test(next)) return null;
+  return next;
+}
+
 async function post(body: Record<string, unknown>) {
   await fetch(`${api}/api/session`, {
     method: "POST",
@@ -65,15 +72,15 @@ async function post(body: Record<string, unknown>) {
   });
 }
 
-async function openSession() {
+async function takeSession(action: "open" | "join", preset: string | null) {
   const response = await fetch(`${api}/api/session`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ action: "open" }),
+    body: JSON.stringify(action === "join" ? { action, code: preset, source: "glasses" } : { action }),
   });
-  if (!response.ok) throw new Error("open");
+  if (!response.ok) throw new Error(action);
   const view = (await response.json()) as { code?: string; canvas?: string; textColor?: number; revision?: number };
-  if (!view.code || !view.canvas) throw new Error("open");
+  if (!view.code || !view.canvas) throw new Error(action);
   code = view.code;
   revision = typeof view.revision === "number" ? view.revision : 0;
   await paint(view.canvas, view.textColor);
@@ -109,9 +116,14 @@ async function poll() {
   }
 }
 
-try {
-  await openSession();
-  window.setInterval(() => void poll(), 800);
-} catch {
-  await paint("Watch 8\nリレーを起動\nport 8787");
+const preset = pairCode(params.get("code"));
+for (;;) {
+  try {
+    await takeSession(preset ? "join" : "open", preset);
+    break;
+  } catch {
+    await paint("Watch 8\nリレーを起動\nport 8787").catch(() => undefined);
+    await new Promise((resolve) => window.setTimeout(resolve, 2000));
+  }
 }
+window.setInterval(() => void poll(), 800);

@@ -98,3 +98,19 @@ test("idle sessions expire and failed lookups back off", () => {
   assert.equal(fromTemple.view.mode, "menu");
   assert.equal(applyRemoteAction(fresh, { action: "nope", code: created.view.code }, 2).status, 400);
 });
+
+test("a saved code is reused by the glasses and the watch", () => {
+  const hub = createRemoteHub();
+  const joined = applyRemoteAction(hub, { action: "join", code: "k7m2", source: "glasses" }, 0);
+  assert.equal(joined.status, 200);
+  if (joined.status !== 200) return;
+  assert.equal(joined.view.code, "K7M2");
+  assert.equal(joined.view.glassesConnected, true);
+  const menu = viewOf(hub.gesture("K7M2", "click", "watch", 1));
+  assert.equal(menu.mode, "menu");
+  const again = applyRemoteAction(hub, { action: "join", code: "K7M2", source: "glasses" }, 2);
+  assert.equal(again.status, 200);
+  if (again.status !== 200) return;
+  assert.equal(again.view.mode, "menu");
+  assert.equal(applyRemoteAction(hub, { action: "join", code: "BAD" }, 3).status, 400);
+});

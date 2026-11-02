@@ -139,12 +139,27 @@ function toView(session: Session, now: number): RemoteView {
   };
 }
 
-function randomCode() {
+export function randomPairCode() {
   const bytes = new Uint8Array(CODE_LENGTH);
   crypto.getRandomValues(bytes);
   let code = "";
   for (const byte of bytes) code += ALPHABET[byte % ALPHABET.length];
   return code;
+}
+
+function blankSession(code: string, now: number): Session {
+  return {
+    code,
+    mode: "pair",
+    index: 0,
+    textColor: TEXT_MAX,
+    revision: 0,
+    signature: "",
+    lastGesture: null,
+    watchSeenAt: null,
+    glassesSeenAt: null,
+    touchedAt: now,
+  };
 }
 
 function selected(session: Session) {
@@ -221,22 +236,26 @@ export function createRemoteHub() {
   return {
     open(now: number): RemoteView {
       sweep(now);
-      let code = randomCode();
-      while (sessions.has(code)) code = randomCode();
-      const session: Session = {
-        code,
-        mode: "pair",
-        index: 0,
-        textColor: TEXT_MAX,
-        revision: 0,
-        signature: "",
-        lastGesture: null,
-        watchSeenAt: null,
-        glassesSeenAt: null,
-        touchedAt: now,
-      };
+      let code = randomPairCode();
+      while (sessions.has(code)) code = randomPairCode();
+      const session = blankSession(code, now);
       commit(session, now);
       sessions.set(code, session);
+      return toView(session, now);
+    },
+    ensure(code: string, role: RemoteRole | null, now: number): RemoteRead {
+      const normalized = normalizePairCode(code);
+      if (!normalized) return "missing";
+      sweep(now);
+      let session = sessions.get(normalized);
+      if (!session || now - session.touchedAt > TTL_MS) {
+        if (session) sessions.delete(normalized);
+        session = blankSession(normalized, now);
+        commit(session, now);
+        sessions.set(normalized, session);
+      }
+      mark(session, role, now);
+      commit(session, now);
       return toView(session, now);
     },
     read(code: string, role: RemoteRole | null, now: number): RemoteRead {
@@ -273,6 +292,11 @@ export function applyRemoteAction(hub: RemoteHub, body: unknown, now: number): R
   if (!body || typeof body !== "object") return { status: 400, error: "bad" };
   const record = body as Record<string, unknown>;
   if (record.action === "open") return { status: 200, view: hub.open(now) };
+  if (record.action === "join") {
+    const joined = normalizePairCode(record.code);
+    if (!joined) return { status: 400, error: "bad" };
+    return fromRead(hub.ensure(joined, parseRole(record.source) ?? parseRole(record.role), now));
+  }
   const code = normalizePairCode(record.code);
   if (!code) return { status: 400, error: "bad" };
   const role = parseRole(record.source) ?? parseRole(record.role);

@@ -1,7 +1,6 @@
 import SwiftUI
 
-/// Drop this file into a watchOS 10 app target. Apple Watch Series 8 operates
-/// the Even Hub page on Even G2: tap, double tap, Digital Crown, long press, brightness.
+/// Apple Watch Series 8 operates the Even Hub page on Even G2.
 @main
 struct WristRemoteApp: App {
   var body: some Scene {
@@ -12,8 +11,8 @@ struct WristRemoteApp: App {
 }
 
 struct ContentView: View {
-  @AppStorage("wristremote.api") private var api = "http://192.168.1.10:8787"
-  @AppStorage("wristremote.code") private var code = ""
+  @AppStorage("wristremote.api") private var api = LaunchConfig.api
+  @AppStorage("wristremote.code") private var code = LaunchConfig.code
   @State private var crown = 0.0
   @State private var lastStep = 0
   @State private var status = "未接続"
@@ -21,12 +20,8 @@ struct ContentView: View {
   var body: some View {
     ScrollView {
       VStack(spacing: 8) {
-        TextField("API", text: $api)
-          .textInputAutocapitalization(.never)
-          .autocorrectionDisabled()
-        TextField("コード", text: $code)
-          .textInputAutocapitalization(.characters)
-          .autocorrectionDisabled()
+        Text(code.isEmpty ? "----" : code)
+          .font(.title3.monospaced())
         Text(status)
           .font(.caption2)
           .foregroundStyle(.secondary)
@@ -41,6 +36,12 @@ struct ContentView: View {
         Text("クラウンで選ぶ")
           .font(.caption2)
           .foregroundStyle(.secondary)
+        TextField("API", text: $api)
+          .textInputAutocapitalization(.never)
+          .autocorrectionDisabled()
+        TextField("コード", text: $code)
+          .textInputAutocapitalization(.characters)
+          .autocorrectionDisabled()
       }
       .padding(.horizontal, 4)
     }

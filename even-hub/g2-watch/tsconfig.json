@@ -7,7 +7,9 @@
     "noEmit": true,
     "lib": ["ES2022", "DOM"],
     "skipLibCheck": true,
-    "isolatedModules": true
+    "isolatedModules": true,
+    "allowImportingTsExtensions": true,
+    "types": ["node"]
   },
-  "include": ["src/main.ts", "src/temple.ts", "src/relay-origin.ts", "src/session.ts"]
+  "include": ["src/main.ts", "src/temple.ts", "src/relay-origin.ts", "src/session.ts", "src/household.ts", "src/setup-page.ts", "src/relay.ts", "src/start.ts"]
 }

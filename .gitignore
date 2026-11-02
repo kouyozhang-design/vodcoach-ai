@@ -42,3 +42,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local pairing for the G2 watch remote
+even-hub/g2-watch/.wrist-remote.json

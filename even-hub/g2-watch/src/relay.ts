@@ -1,8 +1,14 @@
+import { createRequire } from "node:module";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { readFileSync } from "node:fs";
+import { glassesPageUrl, loadHousehold, type Household } from "./household.ts";
 import { applyRemoteAction, createRemoteHub, normalizePairCode, parseRole } from "./session.ts";
+import { renderSetupPage } from "./setup-page.ts";
 
+const require = createRequire(import.meta.url);
 const hub = createRemoteHub();
 const MAX_BODY = 4096;
+const householdPath = new URL("../.wrist-remote.json", import.meta.url);
 
 const CORS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -41,7 +47,31 @@ function readBody(request: IncomingMessage) {
   });
 }
 
+function savedHousehold(): Household | null {
+  try {
+    const home = loadHousehold(readFileSync(householdPath, "utf8"));
+    return home;
+  } catch {
+    return null;
+  }
+}
+
+async function qrSvg(value: string) {
+  try {
+    const QRCode = require("qrcode") as {
+      toString: (text: string, options: { type: "svg"; margin: number }) => Promise<string>;
+    };
+    const svg = await QRCode.toString(value, { type: "svg", margin: 1 });
+    return svg.replace(/<\?xml[^>]*>/, "");
+  } catch {
+    return "";
+  }
+}
+
 export function createRelay() {
+  const home = savedHousehold();
+  if (home) hub.ensure(home.code, null, Date.now());
+
   return createServer(async (request, response) => {
     if (request.method === "OPTIONS") {
       response.writeHead(204, CORS);
@@ -49,6 +79,23 @@ export function createRelay() {
       return;
     }
     const url = new URL(request.url || "/", "http://127.0.0.1");
+    if (url.pathname === "/health") {
+      send(response, 200, { ok: true });
+      return;
+    }
+    if (url.pathname === "/") {
+      const current = savedHousehold();
+      if (!current) {
+        response.writeHead(503, { "Content-Type": "text/plain; charset=utf-8" });
+        response.end("npm start で起動してください");
+        return;
+      }
+      hub.ensure(current.code, null, Date.now());
+      const page = renderSetupPage(current, await qrSvg(glassesPageUrl(current)));
+      response.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+      response.end(page);
+      return;
+    }
     if (url.pathname !== "/api/session") {
       send(response, 404, { error: "missing" });
       return;
@@ -82,7 +129,10 @@ export function createRelay() {
   });
 }
 
-const port = Number(process.env.PORT || 8787);
-createRelay().listen(port, "0.0.0.0", () => {
-  console.log(`wrist remote relay http://0.0.0.0:${port}`);
-});
+const isMain = process.argv[1]?.endsWith("relay.ts") === true;
+if (isMain) {
+  const port = Number(process.env.PORT || 8787);
+  createRelay().listen(port, "0.0.0.0", () => {
+    console.log(`wrist remote relay http://0.0.0.0:${port}`);
+  });
+}

@@ -1,0 +1,7 @@
+#!/bin/sh
+set -e
+cd "$(dirname "$0")/even-hub/g2-watch"
+if [ ! -d node_modules/vite ]; then
+  npm install
+fi
+exec npm start
