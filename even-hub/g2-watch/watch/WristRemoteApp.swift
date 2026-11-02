@@ -1,10 +1,9 @@
 import SwiftUI
 
-/// Drop this file into a watchOS 10 app target. Apple Watch Series 8 is the controller:
-/// tap, double tap, Digital Crown, long press, and brightness call the same session
-/// the Even Hub plugin paints onto Even G2.
+/// Drop this file into a watchOS 10 app target. Apple Watch Series 8 operates
+/// the Even Hub page on Even G2: tap, double tap, Digital Crown, long press, brightness.
 @main
-struct VodcoachWatchApp: App {
+struct WristRemoteApp: App {
   var body: some Scene {
     WindowGroup {
       ContentView()
@@ -13,8 +12,8 @@ struct VodcoachWatchApp: App {
 }
 
 struct ContentView: View {
-  @AppStorage("vodcoach.glasses.api") private var api = "http://192.168.1.10:3000"
-  @AppStorage("vodcoach.glasses.code") private var code = ""
+  @AppStorage("wristremote.api") private var api = "http://192.168.1.10:8787"
+  @AppStorage("wristremote.code") private var code = ""
   @State private var crown = 0.0
   @State private var lastStep = 0
   @State private var status = "未接続"
@@ -38,8 +37,8 @@ struct ContentView: View {
           Button("明るく") { send("brighter") }
           Button("暗く") { send("dimmer") }
         }
-        Button("長押しで待機") { send("long-press") }
-        Text("クラウンで履歴")
+        Button("長押しでコード") { send("long-press") }
+        Text("クラウンで選ぶ")
           .font(.caption2)
           .foregroundStyle(.secondary)
       }
@@ -75,17 +74,13 @@ struct ContentView: View {
   }
 
   private func ping() async {
-    guard let endpoint = endpoint() else { return }
+    guard let endpoint = endpoint(), let pair = normalized(code) else { return }
     var parts = URLComponents(url: endpoint, resolvingAgainstBaseURL: false)
-    parts?.queryItems = [URLQueryItem(name: "code", value: normalized(code) ?? ""), URLQueryItem(name: "role", value: "watch")]
+    parts?.queryItems = [URLQueryItem(name: "code", value: pair), URLQueryItem(name: "role", value: "watch")]
     guard let url = parts?.url else { return }
     do {
       let (_, response) = try await URLSession.shared.data(from: url)
-      guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-        status = "届かない"
-        return
-      }
-      status = "Watch 8"
+      status = (response as? HTTPURLResponse)?.statusCode == 200 ? "Watch 8" : "届かない"
     } catch {
       status = "届かない"
     }
@@ -109,7 +104,8 @@ struct ContentView: View {
         status = "届かない"
         return
       }
-      status = (json["mode"] as? String) == "cue" ? "指示" : "待機"
+      let mode = json["mode"] as? String ?? ""
+      status = mode == "pair" ? "コード" : (mode == "page" ? "ページ" : "メニュー")
     } catch {
       status = "届かない"
     }
@@ -118,15 +114,13 @@ struct ContentView: View {
   private func endpoint() -> URL? {
     let trimmed = api.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
     guard let base = URL(string: trimmed) else { return nil }
-    return URL(string: "/api/glasses/session", relativeTo: base)?.absoluteURL
+    return URL(string: "/api/session", relativeTo: base)?.absoluteURL
   }
 
   private func normalized(_ value: String) -> String? {
     let code = value.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-    guard code.count == 4, code.allSatisfy({ character in
-      let letters = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-      return letters.contains(character)
-    }) else { return nil }
+    let letters = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    guard code.count == 4, code.allSatisfy({ letters.contains($0) }) else { return nil }
     return code
   }
 }

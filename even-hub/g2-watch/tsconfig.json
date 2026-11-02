@@ -9,5 +9,5 @@
     "skipLibCheck": true,
     "isolatedModules": true
   },
-  "include": ["src"]
+  "include": ["src/main.ts", "src/temple.ts", "src/relay-origin.ts", "src/session.ts"]
 }

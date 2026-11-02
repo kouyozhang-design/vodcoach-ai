@@ -1,12 +1,14 @@
 {
-  "name": "vodcoach-g2-watch",
+  "name": "wrist-remote",
   "private": true,
   "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host",
+    "relay": "node --experimental-strip-types src/relay.ts",
     "build": "tsc --noEmit && vite build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test src/session.test.ts"
   },
   "dependencies": {
     "@evenrealities/even_hub_sdk": "0.0.16"

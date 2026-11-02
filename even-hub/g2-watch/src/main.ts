@@ -6,14 +6,14 @@ import {
   waitForEvenAppBridge,
   type EvenHubEvent,
 } from "@evenrealities/even_hub_sdk";
+import { RELAY_ORIGIN } from "./relay-origin";
 import { templeEventType } from "./temple";
 
 const CONTAINER_ID = 1;
 const CONTAINER_NAME = "main";
 
 const params = new URLSearchParams(window.location.search);
-const code = (params.get("code") || "").trim().toUpperCase();
-const api = (params.get("api") || "").trim().replace(/\/$/, "");
+const api = (params.get("api") || RELAY_ORIGIN).trim().replace(/\/$/, "");
 
 const bridge = await waitForEvenAppBridge();
 
@@ -42,7 +42,7 @@ const created = await bridge.createStartUpPageContainer(
         paddingLength: 4,
         containerID: CONTAINER_ID,
         containerName: CONTAINER_NAME,
-        content: code && api ? "Watch 8\n接続中" : "Watch 8\nコードなし\n\nPCの開発ツールに出た\nURLをQRで開く",
+        content: "Watch 8\n接続中",
         isEventCapture: 1,
       }),
     ],
@@ -53,34 +53,49 @@ if (created !== StartUpPageCreateResult.success) {
   console.error("createStartUpPageContainer failed", created);
 }
 
-async function postTemple(eventType: number) {
-  await fetch(`${api}/api/glasses/session`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ action: "gesture", code, source: "glasses", eventType }),
-  });
-}
-
-bridge.onEvenHubEvent((event: EvenHubEvent) => {
-  if (!code || !api) return;
-  const eventType = templeEventType(event);
-  if (eventType === null) return;
-  void postTemple(eventType);
-});
-
+let code = "";
 let revision = -1;
 let polling = false;
 
+async function post(body: Record<string, unknown>) {
+  await fetch(`${api}/api/session`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+async function openSession() {
+  const response = await fetch(`${api}/api/session`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ action: "open" }),
+  });
+  if (!response.ok) throw new Error("open");
+  const view = (await response.json()) as { code?: string; canvas?: string; textColor?: number; revision?: number };
+  if (!view.code || !view.canvas) throw new Error("open");
+  code = view.code;
+  revision = typeof view.revision === "number" ? view.revision : 0;
+  await paint(view.canvas, view.textColor);
+}
+
+bridge.onEvenHubEvent((event: EvenHubEvent) => {
+  if (!code) return;
+  const eventType = templeEventType(event);
+  if (eventType === null) return;
+  void post({ action: "gesture", code, source: "glasses", eventType });
+});
+
 async function poll() {
-  if (!code || !api || polling) return;
+  if (!code || polling) return;
   polling = true;
   try {
     const response = await fetch(
-      `${api}/api/glasses/session?code=${encodeURIComponent(code)}&role=glasses`,
+      `${api}/api/session?code=${encodeURIComponent(code)}&role=glasses`,
       { cache: "no-store" },
     );
     if (!response.ok) {
-      await paint("Watch 8\nAPIに届かない");
+      await paint("Watch 8\nリレーに届かない");
       return;
     }
     const view = (await response.json()) as { revision?: number; canvas?: string; textColor?: number };
@@ -88,13 +103,15 @@ async function poll() {
     revision = view.revision;
     await paint(view.canvas, view.textColor);
   } catch {
-    await paint("Watch 8\nAPIに届かない");
+    await paint("Watch 8\nリレーに届かない");
   } finally {
     polling = false;
   }
 }
 
-if (code && api) {
-  void poll();
+try {
+  await openSession();
   window.setInterval(() => void poll(), 800);
+} catch {
+  await paint("Watch 8\nリレーを起動\nport 8787");
 }

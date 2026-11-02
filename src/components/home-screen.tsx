@@ -12,7 +12,6 @@ import { FightExpanders } from "@/components/fight-expanders";
 import { InsightBoard } from "@/components/insight-board";
 import { SavedAnalyses } from "@/components/saved-analyses";
 import { LanguagePicker } from "@/components/language-picker";
-import { GlassesWatch } from "@/components/glasses-watch";
 import { LiveSession } from "@/components/live-session";
 import { PricingCards } from "@/components/pricing-cards";
 import { ProPlanControls } from "@/components/pro-plan-controls";
@@ -816,7 +815,6 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
               </label>
             </div>
             <LiveSession game={game} rank={rank} character={character} concern={concern} language={language} />
-            <GlassesWatch language={language} />
           </>
         )}
 
