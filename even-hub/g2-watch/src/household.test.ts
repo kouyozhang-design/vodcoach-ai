@@ -44,8 +44,9 @@ test("the same pair code is kept and the phone is allowed to call it", () => {
   assert.match(relayOriginSource(origin), /RELAY_ORIGIN = "http:\/\/192\.168\.1\.8:8787"/);
   assert.match(watchConfigSource(origin, home.code), /static let code = "K7M2"/);
   assert.match(glassesPageUrl(home), /code=K7M2/);
-  const page = renderSetupPage(home, "<svg></svg>");
+  const page = renderSetupPage(home, "data:image/png;base64,aaaa");
   assert.match(page, />K7M2</);
   assert.match(page, /192\.168\.1\.8:8787/);
-  assert.doesNotMatch(page, /<script>[^]*<svg>/);
+  assert.match(page, /src="data:image\/png;base64,aaaa"/);
+  assert.match(page, /width="640"/);
 });

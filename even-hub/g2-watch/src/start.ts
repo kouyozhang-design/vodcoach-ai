@@ -1,6 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import {
@@ -12,8 +11,8 @@ import {
   relayOriginSource,
   watchConfigSource,
 } from "./household.ts";
+import { qrPng } from "./qr-image.ts";
 
-const require = createRequire(import.meta.url);
 const root = new URL("../", import.meta.url);
 const rootPath = fileURLToPath(root);
 
@@ -48,6 +47,12 @@ function run(args: string[]) {
     }
   });
   return child;
+}
+
+function reveal(target: string) {
+  if (process.platform !== "darwin") return;
+  const child = spawn("open", [target], { stdio: "ignore" });
+  child.on("error", () => undefined);
 }
 
 function stop(code: number): never {
@@ -102,16 +107,18 @@ if (!joined.ok) {
 }
 
 const page = glassesPageUrl(home);
-let qr = "";
+const qrPath = fileURLToPath(file("glasses-qr.png"));
 try {
-  const QRCode = require("qrcode") as { toString: (text: string, options: { type: "terminal"; small: boolean }) => Promise<string> };
-  qr = await QRCode.toString(page, { type: "terminal", small: true });
+  writeFileSync(file("glasses-qr.png"), await qrPng(page));
+  reveal(qrPath);
+  reveal(api);
 } catch {
-  qr = "";
+  console.error("QRの画像を作れませんでした");
 }
 
 console.log("");
-console.log(qr);
+console.log("白いQRの画像を開きました。その画像をスマホで読みます。");
+console.log("画像    " + qrPath);
 console.log("コード  " + home.code);
 console.log("API    " + api);
 console.log("案内    " + api);

@@ -1,11 +1,10 @@
-import { createRequire } from "node:module";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { readFileSync } from "node:fs";
 import { glassesPageUrl, loadHousehold, type Household } from "./household.ts";
 import { applyRemoteAction, createRemoteHub, normalizePairCode, parseRole } from "./session.ts";
+import { qrPng } from "./qr-image.ts";
 import { renderSetupPage } from "./setup-page.ts";
 
-const require = createRequire(import.meta.url);
 const hub = createRemoteHub();
 const MAX_BODY = 4096;
 const householdPath = new URL("../.wrist-remote.json", import.meta.url);
@@ -56,13 +55,10 @@ function savedHousehold(): Household | null {
   }
 }
 
-async function qrSvg(value: string) {
+async function qrImage(value: string) {
   try {
-    const QRCode = require("qrcode") as {
-      toString: (text: string, options: { type: "svg"; margin: number }) => Promise<string>;
-    };
-    const svg = await QRCode.toString(value, { type: "svg", margin: 1 });
-    return svg.replace(/<\?xml[^>]*>/, "");
+    const png = await qrPng(value);
+    return `data:image/png;base64,${png.toString("base64")}`;
   } catch {
     return "";
   }
@@ -91,7 +87,7 @@ export function createRelay() {
         return;
       }
       hub.ensure(current.code, null, Date.now());
-      const page = renderSetupPage(current, await qrSvg(glassesPageUrl(current)));
+      const page = renderSetupPage(current, await qrImage(glassesPageUrl(current)));
       response.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
       response.end(page);
       return;

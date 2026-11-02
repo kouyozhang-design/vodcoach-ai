@@ -1,7 +1,7 @@
 import type { Household } from "./household.ts";
 import { glassesPageUrl, relayOrigin } from "./household.ts";
 
-export function renderSetupPage(home: Household, qrSvg: string) {
+export function renderSetupPage(home: Household, qrImage: string) {
   const api = relayOrigin(home.host);
   const page = glassesPageUrl(home);
   const payload = JSON.stringify({ code: home.code, api });
@@ -19,8 +19,7 @@ export function renderSetupPage(home: Household, qrSvg: string) {
     p { line-height: 1.5; color: #c8c8c8; }
     .code { font-size: 4rem; letter-spacing: 0.2rem; font-weight: 700; margin: 0.5rem 0; }
     .card { background: #1c1c1c; border-radius: 1rem; padding: 1rem; margin: 1rem 0; }
-    .qr { background: #fff; border-radius: 0.75rem; padding: 0.75rem; }
-    .qr svg { display: block; width: 100%; height: auto; }
+    .qr-image { display: block; width: min(100%, 20rem); height: auto; background: #fff; padding: 0.75rem; border-radius: 0.75rem; }
     pre { white-space: pre-wrap; font-size: 1rem; margin: 0; min-height: 8rem; }
     button { font: inherit; border: 0; border-radius: 999px; padding: 0.7rem 1rem; background: #2e2e2e; color: inherit; }
     button.primary { background: #f4f4f4; color: #111; }
@@ -38,8 +37,8 @@ export function renderSetupPage(home: Household, qrSvg: string) {
       <div>API <code>${escapeHtml(api)}</code></div>
     </div>
     <div class="card">
-      <p>スマホの Even アプリで、Even Hub の QR からこれを読みます。</p>
-      <div class="qr">${qrSvg}</div>
+      <p>この白いQRを、iPhone の Even アプリで読みます。</p>
+      ${qrImage ? `<img class="qr-image" alt="白いQR" width="640" height="640" src="${escapeHtml(qrImage)}" />` : `<p>QRを表示できません。ターミナルに戻って、もう一度 ./watch-g2 を実行してください。</p>`}
     </div>
     <div class="card">
       <div>いまメガネに出ている画面</div>
