@@ -21,6 +21,7 @@ import {
 } from "@/lib/live-capture";
 import { liveChrome, type CoachLanguage } from "@/lib/coach-language";
 import { hiddenCaption, hideLiveCaption, showLiveCaption } from "@/lib/live-caption";
+import { pushGlassesCue } from "@/lib/glasses-client";
 import { canUseSpeech, cancelSpeech, primeSpeechVoices, speakCoachLine, unlockSpeech } from "@/lib/live-speech";
 import type { GameId } from "@/lib/games";
 import { fillTemplate, localizeKnownError, uiCopy } from "@/lib/ui-copy";
@@ -174,6 +175,7 @@ export function LiveSession({
 
   function talk(line: string) {
     spokenLang.current = configRef.current.language;
+    void pushGlassesCue(line);
     setLastLine(line);
     if (!canUseSpeech()) {
       setSpeaking(false);
@@ -293,6 +295,7 @@ export function LiveSession({
         const next = (bundle.spokenLine || line).trim();
         spokenLang.current = language;
         if (next && next !== line) {
+          void pushGlassesCue(next);
           setLastLine(next);
           const started = speakCoachLine(next, language, speechHandlers(next));
           if (!started) {

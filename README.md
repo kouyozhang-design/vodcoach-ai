@@ -53,6 +53,26 @@ Leave `GEMINI_API_KEY` empty for mock notes-only. For real analysis, set the Blo
 
 Maximum clip size is about 80MB. The coaching API body stays small (JSON + a Blob URL, optional JPEGs). Hobby functions are capped around 60 seconds — that is why long matches are chunked on the client.
 
+## Even G2 from Apple Watch Series 8
+
+Even G1 was a BLE peripheral a phone could drive directly. On Even G2 the Even Realities app keeps Bluetooth, and a plugin draws the lenses through the Even Hub SDK (`@evenrealities/even_hub_sdk`). Apple Watch Series 8 takes the controller role that host used to have.
+
+The live page can open a pair code. Watch taps, double-taps, Digital Crown turns, long-press, and brightness land on `POST /api/glasses/session`. The plugin in `even-hub/g2-watch` polls that session and calls `textContainerUpgrade`. Temple gestures use the same event numbers, so the glasses still operate the page if the watch is off the wrist. A saved pair code also receives each live coaching line.
+
+```bash
+npm run dev
+cd even-hub/g2-watch && npm install && npm run dev
+npx evenhub-simulator http://localhost:5173
+```
+
+Open the site from the PC's LAN address before scanning a QR, and add that origin to `even-hub/g2-watch/app.json` (`network.whitelist` is exact origins only). Then:
+
+```bash
+npx evenhub qr --url "http://<LAN-IP>:5173/?code=<CODE>&api=http://<LAN-IP>:3000"
+```
+
+`watch/VodcoachWatch/VodcoachWatchApp.swift` drops into a watchOS 10 app. Series 8 types the same API origin and the 4-character code. `Info.plist` allows local networking.
+
 ## Commands
 
 ```bash

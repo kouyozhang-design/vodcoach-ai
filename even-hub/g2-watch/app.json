@@ -1,0 +1,16 @@
+{
+  "package_id": "com.vodcoach.watchg2",
+  "edition": "202601",
+  "name": "Watch G2 Coach",
+  "version": "0.1.0",
+  "min_sdk_version": "0.0.16",
+  "entrypoint": "index.html",
+  "permissions": [
+    {
+      "name": "network",
+      "desc": "Apple Watch Series 8の操作とライブの指示を受け取るため、ペア先のAPIへ接続します。",
+      "whitelist": ["http://localhost:3000", "http://127.0.0.1:3000"]
+    }
+  ],
+  "supported_languages": ["ja", "en"]
+}
