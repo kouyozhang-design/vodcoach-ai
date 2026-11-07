@@ -1,0 +1,23 @@
+{
+  "name": "wrist-remote",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "start": "node --experimental-strip-types src/start.ts",
+    "dev": "vite --host",
+    "relay": "node --experimental-strip-types src/relay.ts",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test src/session.test.ts src/household.test.ts src/ports.test.ts"
+  },
+  "dependencies": {
+    "@evenrealities/even_hub_sdk": "0.0.16",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.5"
+  }
+}

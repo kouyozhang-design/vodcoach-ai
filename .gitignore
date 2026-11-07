@@ -2,6 +2,8 @@
 
 # dependencies
 /node_modules
+even-hub/**/node_modules
+even-hub/**/dist
 /.pnp
 .pnp.*
 .yarn/*
@@ -40,3 +42,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local pairing for the G2 watch remote
+even-hub/g2-watch/.wrist-remote.json
+even-hub/g2-watch/glasses-qr.png

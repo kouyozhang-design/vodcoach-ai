@@ -1,0 +1,16 @@
+{
+  "package_id": "com.wristremote.g2",
+  "edition": "202601",
+  "name": "Wrist Remote",
+  "version": "0.1.0",
+  "min_sdk_version": "0.0.16",
+  "entrypoint": "index.html",
+  "permissions": [
+    {
+      "name": "network",
+      "desc": "Apple Watch Series 8からの操作を受け取るため、ペア用のリレーに接続します。",
+      "whitelist": ["http://localhost:8787", "http://127.0.0.1:8787"]
+    }
+  ],
+  "supported_languages": ["ja", "en"]
+}
