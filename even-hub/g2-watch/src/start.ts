@@ -11,6 +11,7 @@ import {
   relayOriginSource,
   watchConfigSource,
 } from "./household.ts";
+import { isWristRemoteProcess, listenerPids, processCommand } from "./ports.ts";
 import { qrPng } from "./qr-image.ts";
 
 const root = new URL("../", import.meta.url);
@@ -49,6 +50,32 @@ function run(args: string[]) {
   return child;
 }
 
+async function releaseOurPorts() {
+  const ports = [8787, 5173];
+  for (const port of ports) {
+    for (const pid of listenerPids(port)) {
+      if (pid === process.pid) continue;
+      const command = processCommand(pid);
+      if (!isWristRemoteProcess(command)) {
+        console.error(`ポート ${port} は別のプログラムが使用中です。`);
+        if (command) console.error(command);
+        stop(1);
+      }
+      try {
+        process.kill(pid, "SIGTERM");
+      } catch {
+        // The previous remote already exited.
+      }
+    }
+  }
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (ports.every((port) => listenerPids(port).length === 0)) return;
+    await delay(100);
+  }
+  console.error("前のリモコンを止められませんでした。その画面で control と C を押してください。");
+  stop(1);
+}
+
 function reveal(target: string) {
   if (process.platform !== "darwin") return;
   const child = spawn("open", [target], { stdio: "ignore" });
@@ -70,6 +97,8 @@ if (process.platform === "darwin") {
   const stayAwake = spawn("caffeinate", ["-ims", "-w", String(process.pid)], { stdio: "ignore" });
   stayAwake.on("error", () => undefined);
 }
+
+await releaseOurPorts();
 
 run(["--experimental-strip-types", "src/relay.ts"]);
 run([fileURLToPath(file("node_modules/vite/bin/vite.js")), "--host", "0.0.0.0", "--port", "5173"]);
@@ -110,14 +139,16 @@ const page = glassesPageUrl(home);
 const qrPath = fileURLToPath(file("glasses-qr.png"));
 try {
   writeFileSync(file("glasses-qr.png"), await qrPng(page));
-  reveal(qrPath);
-  reveal(api);
-} catch {
+} catch (error) {
   console.error("QRの画像を作れませんでした");
+  console.error(error instanceof Error ? error.message : error);
+  stop(1);
 }
+reveal(qrPath);
+reveal(api);
 
 console.log("");
-console.log("白いQRの画像を開きました。その画像をスマホで読みます。");
+console.log("QRの画像を保存しました。この画面は閉じないでください。");
 console.log("画像    " + qrPath);
 console.log("コード  " + home.code);
 console.log("API    " + api);

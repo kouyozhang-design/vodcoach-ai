@@ -128,7 +128,16 @@ export function createRelay() {
 const isMain = process.argv[1]?.endsWith("relay.ts") === true;
 if (isMain) {
   const port = Number(process.env.PORT || 8787);
-  createRelay().listen(port, "0.0.0.0", () => {
+  const server = createRelay();
+  server.on("error", (error: NodeJS.ErrnoException) => {
+    if (error.code === "EADDRINUSE") {
+      console.error("ポート 8787 は使用中です。前の画面で control と C を押してから、もう一度実行してください。");
+    } else {
+      console.error(error.message);
+    }
+    process.exit(1);
+  });
+  server.listen(port, "0.0.0.0", () => {
     console.log(`wrist remote relay http://0.0.0.0:${port}`);
   });
 }

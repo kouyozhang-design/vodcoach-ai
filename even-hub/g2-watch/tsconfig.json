@@ -11,5 +11,5 @@
     "allowImportingTsExtensions": true,
     "types": ["node"]
   },
-  "include": ["src/main.ts", "src/temple.ts", "src/relay-origin.ts", "src/session.ts", "src/household.ts", "src/setup-page.ts", "src/relay.ts", "src/start.ts"]
+  "include": ["src/main.ts", "src/temple.ts", "src/relay-origin.ts", "src/session.ts", "src/household.ts", "src/setup-page.ts", "src/relay.ts", "src/start.ts", "src/ports.ts", "src/qr-image.ts"]
 }
