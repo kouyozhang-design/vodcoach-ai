@@ -6,6 +6,7 @@ import {
   hasBlobToken,
   MAX_CLIP_BYTES,
 } from "@/lib/blob";
+import { gatePaidCaller } from "@/lib/paid-route-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,6 +40,10 @@ export async function POST(request: Request) {
   } catch {
     return json({ error: "アップロード要求の形式が正しくありません。" }, { status: 400 });
   }
+
+  const minting = body.type === "blob.generate-client-token";
+  const denied = await gatePaidCaller(minting ? "blob-token" : "blob-complete", minting ? 4 : 30, minting ? 12 : 60, 60 * 60 * 1000);
+  if (denied) return denied;
 
   try {
     const jsonResponse = await handleUpload({
