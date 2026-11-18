@@ -48,7 +48,7 @@ export async function uploadClipToBlob(
   const { signal, onProgress } = options;
 
   if (file.size > MAX_CLIP_BYTES) {
-    throw new Error("動画は80MB以下にしてください。");
+    throw new Error("動画は500MB以下にしてください。");
   }
   throwIfAborted(signal);
 

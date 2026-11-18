@@ -51,7 +51,7 @@ BLOB_READ_WRITE_TOKEN=
 
 Leave `GEMINI_API_KEY` empty for mock notes-only. For real analysis, set the Blob read/write token, `COACH_PROVIDER=gemini`, and `GEMINI_API_KEY`. After adding variables, Redeploy so the function picks them up.
 
-Maximum clip size is about 80MB. The coaching API body stays small (JSON + a Blob URL, optional JPEGs). Hobby functions are capped around 60 seconds — that is why long matches are chunked on the client.
+Maximum clip size is about 500MB. The coaching API body stays small (JSON + a Blob URL, optional JPEGs). Hobby functions are capped around 60 seconds — that is why long matches are chunked on the client.
 
 ## Commands
 

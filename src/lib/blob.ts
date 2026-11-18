@@ -1,7 +1,7 @@
 export const BLOB_TOKEN_MISSING =
   "動画の保存用トークン（BLOB_READ_WRITE_TOKEN）が設定されていません。Vercel の Environment Variables に追加してください。";
 
-export const MAX_CLIP_BYTES = 80 * 1024 * 1024;
+export const MAX_CLIP_BYTES = 500 * 1024 * 1024;
 
 /** Live store `vodcoach-ai-blob` is private. `access: "public"` is rejected. */
 export const BLOB_ACCESS = "private" as const;
@@ -22,7 +22,7 @@ export function blobPathnameFromUrl(url: string) {
   return pathname.replace(/^\//, "");
 }
 
-/** Client-upload JWT lifetime. Long enough to start an 80MB match, short enough to expire a leaked token. */
+/** Client-upload JWT lifetime. Long enough to start a 500MB match, short enough to expire a leaked token. */
 export const CLIENT_UPLOAD_TOKEN_MS = 60 * 60 * 1000;
 
 export function hasBlobToken() {

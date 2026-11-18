@@ -43,7 +43,7 @@ test("expired or unminted client tokens retry once, then map to a Japanese netwo
   assert.equal(isBlobTokenError(retrieve), true);
   assert.equal(shouldRetryBlobToken(expired, 1, BLOB_UPLOAD_TOKEN_ATTEMPTS), true);
   assert.equal(shouldRetryBlobToken(expired, 2, BLOB_UPLOAD_TOKEN_ATTEMPTS), false);
-  assert.equal(isBlobTokenError(new Error("動画は80MB以下にしてください。")), false);
+  assert.equal(isBlobTokenError(new Error("動画は500MB以下にしてください。")), false);
   assert.equal(mapUploadFailure(expired).message, BLOB_UPLOAD_NETWORK_ERROR);
   assert.equal(
     mapUploadFailure(new Error("Vercel Blob: Cannot use public access on a private store.")).message,
