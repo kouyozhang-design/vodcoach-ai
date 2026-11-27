@@ -51,6 +51,7 @@ import { mapPool } from "@/lib/async-pool";
 import { COACH_REQUEST_TIMEOUT_MS, isAbortError, requestCoach } from "@/lib/coach/client";
 import type { CoachChunkReport, CoachFrame, CoachResponse } from "@/lib/coach/types";
 import { extractJpegFramesInRange } from "@/lib/extract-frames";
+import { characterName } from "@/lib/character-names";
 import { gameConfigs, gameIds, type GameId } from "@/lib/games";
 import {
   isLongMatch,
@@ -76,6 +77,10 @@ import { isAllowedCoachVideo } from "@/lib/video";
 
 const MAX_BYTES = MAX_CLIP_BYTES;
 
+function characterChoices(language: CoachLanguage, game: GameId) {
+  return gameConfigs[game].characters.map((id) => ({ value: id, label: characterName(language, id) }));
+}
+
 function subscribeLanguage(onStoreChange: () => void) {
   window.addEventListener("storage", onStoreChange);
   window.addEventListener("vodcoach-language", onStoreChange);
@@ -91,8 +96,14 @@ function changeLanguage(next: CoachLanguage) {
 }
 
 function SelectField({
-  label, value, options, onChange,
-}: { label: string; value: string; options: readonly string[]; onChange: (value: string) => void }) {
+  label, value, options, onChange, testId,
+}: {
+  label: string;
+  value: string;
+  options: readonly (string | { value: string; label: string })[];
+  onChange: (value: string) => void;
+  testId?: string;
+}) {
   return (
     <label className="space-y-2">
       <span className="text-[11px] font-semibold uppercase tracking-[0.13em] text-zinc-500">{label}</span>
@@ -102,8 +113,13 @@ function SelectField({
           onChange={(event) => onChange(event.target.value)}
           className="h-11 w-full appearance-none rounded-xl border border-white/[0.08] bg-white/[0.035] px-3.5 pr-10 text-sm text-zinc-200 outline-none transition focus:border-red-500/60 focus:ring-2 focus:ring-red-500/10"
           aria-label={label}
+          data-testid={testId}
         >
-          {options.map((option) => <option key={option}>{option}</option>)}
+          {options.map((option) => {
+            const optionValue = typeof option === "string" ? option : option.value;
+            const optionLabel = typeof option === "string" ? option : option.label;
+            return <option key={optionValue} value={optionValue}>{optionLabel}</option>;
+          })}
         </select>
         <ChevronDown className="pointer-events-none absolute right-3.5 top-3.5 size-4 text-zinc-600" />
       </div>
@@ -812,7 +828,7 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
                 </div>
               </label>
               <SelectField label={t.rank} value={rank} options={gameConfig.ranks} onChange={setRank} />
-              <SelectField label={game === "valorant" ? t.agent : t.legend} value={character} options={gameConfig.characters} onChange={setCharacter} />
+              <SelectField label={game === "valorant" ? t.agent : t.legend} value={character} options={characterChoices(language, game)} onChange={setCharacter} />
               <label className="space-y-2">
                 <span className="text-[11px] font-semibold uppercase tracking-[0.13em] text-zinc-500">{t.focus}</span>
                 <Textarea value={concern} onChange={(event) => setConcern(event.target.value.slice(0, 240))} className="min-h-11 resize-none border-white/[0.08] bg-white/[0.035] px-3.5 py-2.5 text-sm leading-5 text-zinc-200 placeholder:text-zinc-700 focus-visible:border-red-500/60 focus-visible:ring-red-500/10" placeholder={t.focusPlaceholder} />
@@ -904,7 +920,7 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
               </label>
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
                 <SelectField label={t.rank} value={rank} options={gameConfig.ranks} onChange={setRank} />
-                <SelectField label={game === "valorant" ? t.agent : t.legend} value={character} options={gameConfig.characters} onChange={setCharacter} />
+                <SelectField label={game === "valorant" ? t.agent : t.legend} value={character} options={characterChoices(language, game)} onChange={setCharacter} testId="character-select" />
               </div>
               <label className="mt-4 block space-y-2">
                 <span className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.13em] text-zinc-500">{t.struggle} <span className="font-normal normal-case tracking-normal text-zinc-700">{concern.length}/240</span></span>
