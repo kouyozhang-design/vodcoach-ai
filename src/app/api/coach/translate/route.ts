@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import { parseTranslateRequest } from "@/lib/coach/coach-text";
 import { translateCoachBundle } from "@/lib/coach/translate-server";
+import { gatePaidCaller } from "@/lib/paid-route-guard";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
 export async function POST(request: Request) {
+  const denied = await gatePaidCaller("coach-translate", 10, 40, 10 * 60 * 1000);
+  if (denied) return denied;
   const contentType = request.headers.get("content-type") ?? "";
   if (contentType.includes("multipart/form-data")) {
     return NextResponse.json(

@@ -735,7 +735,7 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
   const progressLabel = progressText();
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#070708] text-white">
+    <main className="relative min-h-screen overflow-x-clip bg-[#070708] text-white">
       <div className="pointer-events-none absolute inset-x-0 top-0 h-[620px] bg-[radial-gradient(ellipse_at_top,rgba(220,38,38,0.18),transparent_62%)]" />
       <div className="pointer-events-none absolute inset-0 opacity-[0.035] [background-image:linear-gradient(rgba(255,255,255,.15)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.15)_1px,transparent_1px)] [background-size:44px_44px]" />
       <div className="relative mx-auto max-w-[1480px] px-4 pb-10 sm:px-6 lg:px-10">
@@ -770,14 +770,15 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
           </div>
         </header>
 
-        <section className="pb-7 pt-9 sm:pt-12">
-          <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-red-400">
+        <section className="mx-auto max-w-4xl pb-7 pt-9 text-center sm:pt-12">
+          <div className="flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-red-400">
             <ScanLine className="size-3.5" />{t.eyebrow}
           </div>
-          <h1 className="mt-3 max-w-4xl text-4xl font-semibold leading-[1.12] tracking-[-0.05em] sm:text-5xl lg:text-[52px]">
-            {t.heroLead}<span className="bg-gradient-to-r from-red-300 via-red-500 to-orange-400 bg-clip-text text-transparent">{t.heroAccent}</span>
+          <h1 className="mx-auto mt-3 max-w-4xl text-balance text-4xl font-semibold leading-[1.3] tracking-[-0.03em] sm:text-5xl lg:text-[52px]">
+            <span className="block">{t.heroLead}</span>
+            <span className="mt-1 block bg-gradient-to-r from-red-300 via-red-500 to-orange-400 bg-clip-text px-2 pb-1 leading-[1.35] text-transparent">{t.heroAccent}</span>
           </h1>
-          <p className="mt-4 max-w-2xl text-sm leading-6 text-zinc-500">
+          <p className="mx-auto mt-4 max-w-2xl text-sm leading-6 text-zinc-500">
             {t.heroBody}
           </p>
           <div className="mt-6 inline-flex rounded-full border border-white/[0.08] bg-white/[0.03] p-1">
@@ -800,7 +801,7 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
 
         {appMode === "live" && (
           <>
-            <div className="mb-4 grid gap-4 lg:grid-cols-[1fr_1fr_1fr_1.4fr]">
+            <div className="mb-4 grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.4fr)]">
               <label className="space-y-2">
                 <span className="text-[11px] font-semibold uppercase tracking-[0.13em] text-zinc-500">{t.game}</span>
                 <div className="relative">
@@ -822,8 +823,8 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
         )}
 
         {appMode === "vod" && (
-        <div className="grid gap-4 xl:grid-cols-[0.86fr_1.14fr]">
-          <section className="xl:col-span-2 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4" data-testid="coach-dashboard">
+        <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,0.86fr)_minmax(0,1.14fr)]">
+          <section className="min-w-0 xl:col-span-2 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4" data-testid="coach-dashboard">
             <p className="text-[11px] font-semibold uppercase tracking-[0.13em] text-zinc-500">{t.savedHeading}</p>
             <p className="mt-3 text-sm text-zinc-200">{fillTemplate(t.coachCount, { n: saved.length })}</p>
             <p className="mt-1 text-xs leading-5 text-zinc-500" data-testid="coach-habit">
@@ -840,7 +841,7 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
             />
             <PricingCards language={language} />
           </section>
-          <Card className="border-white/[0.08] bg-[#0e0e10]/95 p-0 text-white shadow-2xl shadow-black/40">
+          <Card className="min-w-0 border-white/[0.08] bg-[#0e0e10]/95 p-0 text-white shadow-2xl shadow-black/40">
             <div className="p-4 sm:p-5">
               <div className="mb-4 flex items-center justify-between">
                 <div>
@@ -926,7 +927,7 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
             </div>
           </Card>
 
-          <Card className="min-h-[520px] overflow-hidden border-white/[0.08] bg-[#0e0e10]/95 p-0 text-white shadow-2xl shadow-black/40 sm:min-h-[620px]">
+          <Card className="min-h-[520px] min-w-0 overflow-hidden border-white/[0.08] bg-[#0e0e10]/95 p-0 text-white shadow-2xl shadow-black/40 sm:min-h-[620px]">
             {(status === "empty" || status === "ready" || status === "error") && (
               <div className="flex min-h-[520px] flex-col items-center justify-center px-6 py-10 text-center sm:min-h-[620px] sm:px-8">
                 <div className="relative"><div className="absolute -inset-7 rounded-full bg-red-500/10 blur-2xl" /><div className="relative grid size-16 place-items-center rounded-2xl border border-white/[0.08] bg-white/[0.03]"><Play className="ml-1 size-6 fill-red-500/20 text-red-400" /></div></div>
@@ -1021,7 +1022,7 @@ export default function HomeScreen({ signedIn }: { signedIn: boolean }) {
           </Card>
         </div>
         )}
-        <footer className="mt-5 flex flex-col items-center justify-between gap-2 border-t border-white/[0.05] pt-5 text-[9px] uppercase tracking-[0.13em] text-zinc-800 sm:flex-row"><span>VODCoach.AI · Apex · VALORANT</span><span>{t.footerRight}</span></footer>
+        <footer className="mt-5 flex flex-col items-center justify-center gap-2 border-t border-white/[0.05] pt-5 text-center text-[9px] uppercase tracking-[0.13em] text-zinc-800 sm:flex-row"><span>VODCoach.AI · Apex · VALORANT</span><span>{t.footerRight}</span></footer>
       </div>
     </main>
   );

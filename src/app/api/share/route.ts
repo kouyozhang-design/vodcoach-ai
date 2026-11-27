@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { hasBlobToken } from "@/lib/blob";
+import { gatePaidCaller } from "@/lib/paid-route-guard";
 import { buildShareSnapshot, sharePagePath } from "@/lib/share-snapshot";
 import { writeShareSnapshot } from "@/lib/share-store";
 
@@ -16,6 +17,8 @@ function json(data: unknown, status = 200) {
 }
 
 export async function POST(request: Request) {
+  const denied = await gatePaidCaller("share", 8, 30, 60 * 60 * 1000);
+  if (denied) return denied;
   if (!hasBlobToken()) return json({ error: "unconfigured" }, 503);
   let body: unknown;
   try {

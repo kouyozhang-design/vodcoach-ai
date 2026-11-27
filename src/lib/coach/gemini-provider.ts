@@ -77,6 +77,7 @@ async function analyzeVideo(
   mode: CoachMode,
   frames: CoachRequest["frames"],
 ) {
+  if (!isPrivateBlobUrl(videoUrl)) throw new CoachProviderError(CONNECT_ERROR, "http");
   const range = videoRange(input, mode);
   const { mimeType, size } = await sniffVideo(videoUrl);
   const fileUri = await readableVideoUrl(videoUrl);
@@ -220,17 +221,11 @@ function retryDelayMs(attempt: number) {
 async function uploadBlobToGeminiFiles(apiKey: string, videoUrl: string, mimeType: string) {
   let bytes: ArrayBuffer;
   let resolvedMime = mimeType || "video/mp4";
-  if (isPrivateBlobUrl(videoUrl)) {
-    const privateFile = await readPrivateVideoBytes(videoUrl);
-    if (!privateFile) throw new CoachProviderError(CONNECT_ERROR, "http");
-    bytes = privateFile.bytes;
-    resolvedMime = privateFile.mimeType || resolvedMime;
-  } else {
-    const videoResponse = await fetch(videoUrl, { method: "GET", redirect: "follow" });
-    if (!videoResponse.ok) throw new CoachProviderError(CONNECT_ERROR, "http");
-    bytes = await videoResponse.arrayBuffer();
-    resolvedMime = headerMime(videoResponse.headers.get("content-type")) || resolvedMime;
-  }
+  if (!isPrivateBlobUrl(videoUrl)) throw new CoachProviderError(CONNECT_ERROR, "http");
+  const privateFile = await readPrivateVideoBytes(videoUrl);
+  if (!privateFile) throw new CoachProviderError(CONNECT_ERROR, "http");
+  bytes = privateFile.bytes;
+  resolvedMime = privateFile.mimeType || resolvedMime;
 
   const start = await fetch(FILES_START_URL, {
     method: "POST",
@@ -295,25 +290,12 @@ async function waitUntilActive(apiKey: string, fileName: string) {
 
 async function sniffVideo(videoUrl: string) {
   const fromName = mimeFromVideoUrl(videoUrl);
+  if (!isPrivateBlobUrl(videoUrl)) return { mimeType: fromName, size: undefined };
   try {
-    if (isPrivateBlobUrl(videoUrl)) {
-      const meta = await sniffPrivateVideo(videoUrl);
-      return {
-        mimeType: headerMime(meta.mimeType) || fromName,
-        size: meta.size > 0 ? meta.size : undefined,
-      };
-    }
-    const response = await fetch(videoUrl, {
-      method: "HEAD",
-      redirect: "follow",
-      signal: AbortSignal.timeout(8_000),
-    });
-    const fromHeader = headerMime(response.headers.get("content-type"));
-    const raw = response.ok ? response.headers.get("content-length") : null;
-    const parsed = raw ? Number(raw) : NaN;
+    const meta = await sniffPrivateVideo(videoUrl);
     return {
-      mimeType: fromHeader || fromName,
-      size: Number.isFinite(parsed) && parsed > 0 ? parsed : undefined,
+      mimeType: headerMime(meta.mimeType) || fromName,
+      size: meta.size > 0 ? meta.size : undefined,
     };
   } catch {
     return { mimeType: fromName, size: undefined };

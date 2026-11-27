@@ -5,7 +5,9 @@ const SIGNED_GET_MS = 2 * 60 * 60 * 1000;
 
 /** Gemini fetches file_uri itself, so private blobs need a time-limited GET URL. */
 export async function readableVideoUrl(videoUrl: string) {
-  if (!isPrivateBlobUrl(videoUrl)) return videoUrl;
+  if (!isPrivateBlobUrl(videoUrl)) {
+    throw new Error("refusing a video URL outside the private blob store");
+  }
   const pathname = blobPathnameFromUrl(videoUrl);
   const signed = await issueSignedToken({
     pathname,

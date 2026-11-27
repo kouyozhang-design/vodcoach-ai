@@ -14,6 +14,8 @@ import type {
 } from "@/lib/coach/types";
 import { requestHasClip, resolveCoachMode } from "@/lib/coach/types";
 import { gameConfigs, isGameId } from "@/lib/games";
+import { isPrivateBlobUrl } from "@/lib/blob";
+import { gatePaidCaller } from "@/lib/paid-route-guard";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -43,6 +45,8 @@ type ParsedCoachBody = {
 };
 
 export async function POST(request: Request) {
+  const denied = await gatePaidCaller("coach", 6, 30, 10 * 60 * 1000);
+  if (denied) return denied;
   try {
     const parsed = await readCoachBody(request);
     if (parsed instanceof NextResponse) return parsed;
@@ -163,9 +167,8 @@ function parseVideoUrl(value: unknown): string | undefined | NextResponse {
   const trimmed = value.trim();
   if (!trimmed) return undefined;
   try {
-    const url = new URL(trimmed);
-    if (url.protocol !== "https:") {
-      return NextResponse.json({ error: "動画URLの形式が正しくありません。" }, { status: 400 });
+    if (!isPrivateBlobUrl(trimmed)) {
+      return NextResponse.json({ error: "動画URLはアップロード済みの非公開クリップだけです。" }, { status: 400 });
     }
     return trimmed;
   } catch {
