@@ -11,6 +11,9 @@ const noStoreHeaders = [
 
 const nextConfig: NextConfig = {
   // Do not set `output: "export"`. POST /api/coach needs a Node server on Vercel.
+  experimental: {
+    agentUpgrade: "security",
+  },
   async headers() {
     return [
       { source: "/", headers: noStoreHeaders },
