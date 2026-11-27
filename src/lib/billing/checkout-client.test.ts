@@ -16,11 +16,11 @@ test("checkout stays fail-closed until Stripe returns a real session URL", () =>
   assert.deepEqual(ready, { kind: "url", url: "https://checkout.stripe.com/c/pay/cs_test" });
 });
 
-test("node stays on 24 and Next is not bumped in this change", () => {
+test("node stays on 24 and Next stays on the patched 16.4 release", () => {
   const pkg = JSON.parse(readFileSync(new URL("../../../package.json", import.meta.url), "utf8")) as {
     engines: { node: string };
     dependencies: { next: string };
   };
   assert.equal(pkg.engines.node, "24.x");
-  assert.equal(pkg.dependencies.next, "16.4.0");
+  assert.equal(pkg.dependencies.next, "16.4.6");
 });
