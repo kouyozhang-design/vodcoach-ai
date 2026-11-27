@@ -1,5 +1,5 @@
 export const BLOB_TOKEN_MISSING =
-  "動画の保存用トークン（BLOB_READ_WRITE_TOKEN）が設定されていません。Vercel の Environment Variables に追加してください。";
+  "動画の保存用トークン（BLOB_READ_WRITE_TOKEN）が設定されていません。Vercel Blob の Private ストアからコピーし、Cursor の Secrets に同じ名前で保存してください。";
 
 export const MAX_CLIP_BYTES = 500 * 1024 * 1024;
 
