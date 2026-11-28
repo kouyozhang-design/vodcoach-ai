@@ -466,26 +466,8 @@ def build(prs: Presentation) -> None:
     write(s, 0.72, 4.5, 11.5, 0.7, ["奥妙の中身は、その三つ。"], 24, GOLD)
     write(s, 0.72, 5.6, 11.5, 0.7, ["自分の出し物なら、何が落ちる？"], 26, CREAM, bold=True)
     footer(s, 15, True)
-    notes(s, note_for(SLIDES[14]))
-
-    s = new_slide(prs, False)
-    kicker(s, "聞かれたときだけ。発表では開かない")
-    write(s, 0.72, 1.0, 12, 0.6, ["答えはノートと原稿。"], 28, INK_TEXT, bold=True)
-    qs = [item["q"] for item in QA]
-    for i, q in enumerate(qs):
-        col = i % 2
-        row = i // 2
-        x = 0.72 + col * 6.15
-        y = 2.05 + row * 1.45
-        rect(s, x, y, 5.9, 1.25, PAPER_CARD, rounded=0.1)
-        write(s, x + 0.25, y, 5.4, 1.25, [q], 18, INK_TEXT, bold=True, anchor="ctr")
-    s._element.set("show", "0")
-    qa_notes = ["【非表示。質問が来たら、この答えだけ。人数と濃度の数字は作らない】", ""]
-    for item in QA:
-        qa_notes.append(f"Q. {item['q']}")
-        qa_notes.append(item["a"])
-        qa_notes.append("")
-    notes(s, "\n".join(qa_notes))
+    extra = "\n".join(f"Q. {item['q']}\n{item['a']}" for item in QA)
+    notes(s, note_for(SLIDES[14]) + "\n\n聞かれたときの答え。スライドには出していない。\n\n" + extra)
 
 
 def spoken_chars(text: str) -> int:
@@ -510,7 +492,7 @@ def manuscript() -> str:
     lines = [
         "# 奥妙なAI領域　発表原稿（文化祭・鳥）",
         "",
-        "探究発表の別版。想定は7〜10分。スライド15枚。16枚目は非表示。",
+        "探究発表の別版。想定は7〜10分。スライドは15枚。",
         f"セリフの目安合計は {total // 60}分{total % 60:02d}秒。読み上げ本文は約{speech}字。［ ］は声に出さない。",
         "",
         "前の版は、試合の動画を見る道具が主軸。この版は、同じ学校の文化祭で、CO2を吸うと倒れる鳥が主軸。タイトルと、用語をスライドに定義しない置き方は同じ。",
